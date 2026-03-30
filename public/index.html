@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Assistant Bot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <div class="container">
+                <h1>
+                    <i class="material-icons">smart_toy</i>
+                    DevOps Assistant Bot
+                </h1>
+                <div class="status-indicator">
+                    <span class="status-dot online"></span>
+                    <span>En ligne</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot-message">
+                        <div class="avatar">
+                            <i class="material-icons">smart_toy</i>
+                        </div>
+                        <div class="message-content">
+                            <p>👋 Bonjour ! Je suis votre assistant DevOps. Je peux vous aider avec :</p>
+                            <ul>
+                                <li>🚀 Déploiements d'applications</li>
+                                <li>📊 Monitoring et métriques</li>
+                                <li>🔍 Diagnostic d'erreurs</li>
+                                <li>⚡ Optimisation des performances</li>
+                            </ul>
+                            <p>Comment puis-je vous aider aujourd'hui ?</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="quick-actions">
+                        <button class="quick-action" onclick="sendQuickMessage('Déploie l\'application')">
+                            <i class="material-icons">rocket_launch</i>
+                            Déployer
+                        </button>
+                        <button class="quick-action" onclick="sendQuickMessage('Montre moi le monitoring')">
+                            <i class="material-icons">monitoring</i>
+                            Monitorer
+                        </button>
+                        <button class="quick-action" onclick="sendQuickMessage('Y a-t-il des erreurs ?')">
+                            <i class="material-icons">error</i>
+                            Erreurs
+                        </button>
+                        <button class="quick-action" onclick="sendQuickMessage('Optimise les performances')">
+                            <i class="material-icons">speed</i>
+                            Optimiser
+                        </button>
+                    </div>
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="Tapez votre message..."
+                            onkeypress="handleKeyPress(event)"
+                        >
+                        <button id="sendButton" onclick="sendMessage()">
+                            <i class="material-icons">send</i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="sidebar">
+                <div class="info-card">
+                    <h3>
+                        <i class="material-icons">info</i>
+                        Informations
+                    </h3>
+                    <div class="info-content">
+                        <div class="info-item">
+                            <span class="label">Version:</span>
+                            <span class="value">1.0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Services:</span>
+                            <span class="value">4 actifs</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Uptime:</span>
+                            <span class="value" id="uptime">0h 0m</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-card">
+                    <h3>
+                        <i class="material-icons">analytics</i>
+                        Métriques
+                    </h3>
+                    <div class="metrics-content">
+                        <div class="metric">
+                            <div class="metric-label">CPU</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" style="width: 45%"></div>
+                            </div>
+                            <div class="metric-value">45%</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Mémoire</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" style="width: 62%"></div>
+                            </div>
+                            <div class="metric-value">62%</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Disque</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" style="width: 78%"></div>
+                            </div>
+                            <div class="metric-value">78%</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

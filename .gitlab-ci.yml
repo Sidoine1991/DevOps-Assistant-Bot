@@ -1,0 +1,90 @@
+stages:
+  - build
+  - test
+  - security
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  DOCKER_TAG: $CI_COMMIT_SHORT_SHA
+
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker build -t $DOCKER_IMAGE .
+    - docker tag $DOCKER_IMAGE $CI_REGISTRY_IMAGE:latest
+    - docker push $DOCKER_IMAGE
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - main
+    - develop
+
+test:
+  stage: test
+  image: node:18-alpine
+  services:
+    - postgres:15-alpine
+    - redis:7-alpine
+  variables:
+    POSTGRES_DB: test_db
+    POSTGRES_USER: test_user
+    POSTGRES_PASSWORD: test_password
+    DATABASE_URL: postgresql://test_user:test_password@postgres:5432/test_db
+    REDIS_URL: redis://redis:6379
+  script:
+    - npm ci
+    - npm run test
+  coverage: '/Coverage: \d+\.\d+%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+
+security_scan:
+  stage: security
+  image: node:18-alpine
+  script:
+    - npm ci
+    - npm audit --audit-level high
+    - echo "Security scan completed"
+  allow_failure: true
+
+deploy_staging:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo "Deploying to staging environment"
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker pull $DOCKER_IMAGE
+    - docker tag $DOCKER_IMAGE $CI_REGISTRY_IMAGE:staging
+    - docker push $CI_REGISTRY_IMAGE:staging
+  environment:
+    name: staging
+    url: https://staging.devops-assistant-bot.com
+  only:
+    - develop
+
+deploy_production:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo "Deploying to production environment"
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker pull $DOCKER_IMAGE
+    - docker tag $DOCKER_IMAGE $CI_REGISTRY_IMAGE:production
+    - docker push $CI_REGISTRY_IMAGE:production
+  environment:
+    name: production
+    url: https://devops-assistant-bot.com
+  when: manual
+  only:
+    - main
