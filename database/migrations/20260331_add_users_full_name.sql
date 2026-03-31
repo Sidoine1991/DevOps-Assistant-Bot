@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS full_name text;
+
+COMMIT;

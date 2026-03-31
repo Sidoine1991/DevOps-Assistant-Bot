@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscription - DevOps Assistant Bot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { overflow: auto; }
+        .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+        .auth-card {
+            width: 100%;
+            max-width: 460px;
+            background: rgba(255,255,255,.95);
+            border-radius: 16px;
+            box-shadow: 0 16px 34px rgba(0,0,0,.15);
+            padding: 1.25rem;
+        }
+        .auth-card h2 { margin-bottom: .35rem; color: #1f2937; }
+        .auth-card p { margin-bottom: 1rem; color: #4b5563; font-size: .92rem; }
+        .auth-card input {
+            width: 100%;
+            padding: .7rem;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            margin-bottom: .6rem;
+        }
+        .auth-card button {
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            padding: .7rem;
+            margin-bottom: .5rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-main { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+        .btn-alt { background: #eef2ff; color: #374151; }
+        .msg { min-height: 1.1rem; font-size: .86rem; color: #374151; margin-top: .25rem; }
+        .links { margin-top: .65rem; font-size: .86rem; display: flex; justify-content: space-between; }
+        .links a { color: #374151; }
+    </style>
+</head>
+<body>
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <h2>Creer votre compte</h2>
+            <p>Entrez votre email, recevez un code, puis validez pour acceder au bot.</p>
+
+            <input id="fullName" type="text" placeholder="Nom complet">
+            <input id="email" type="email" placeholder="email@exemple.com">
+            <button id="sendCode" class="btn-main">Recevoir un code</button>
+            <input id="code" type="text" placeholder="Code a 6 chiffres">
+            <button id="verifyCode" class="btn-alt">Verifier mon compte</button>
+            <div id="msg" class="msg"></div>
+
+            <div class="links">
+                <a href="/home.html">Retour accueil</a>
+                <a href="/login.html">Se connecter</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const msg = document.getElementById('msg');
+        const fullNameInput = document.getElementById('fullName');
+        const emailInput = document.getElementById('email');
+        const codeInput = document.getElementById('code');
+
+        document.getElementById('sendCode').addEventListener('click', async () => {
+            const email = (emailInput.value || '').trim();
+            const fullName = (fullNameInput.value || '').trim();
+            if (!email) {
+                msg.textContent = 'Veuillez saisir un email.';
+                return;
+            }
+            const res = await fetch('/api/auth/request-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, fullName })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || 'Reponse serveur.';
+            if (data.debugCode) {
+                msg.textContent += ` (code test: ${data.debugCode})`;
+            }
+        });
+
+        document.getElementById('verifyCode').addEventListener('click', async () => {
+            const email = (emailInput.value || '').trim();
+            const code = (codeInput.value || '').trim();
+            if (!email || !code) {
+                msg.textContent = 'Email et code requis.';
+                return;
+            }
+            const res = await fetch('/api/auth/verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, code })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || 'Reponse serveur.';
+            if (data.success && data.user && data.user.id) {
+                localStorage.setItem('devops-user-id', data.user.id);
+                localStorage.setItem('devops-user-verified', 'true');
+                localStorage.setItem('devops-user-name', data.user.fullName || fullNameInput.value || '');
+                window.location.href = '/index.html';
+            }
+        });
+    </script>
+</body>
+</html>

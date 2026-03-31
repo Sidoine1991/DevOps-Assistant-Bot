@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const socketIo = require('socket.io');
+const path = require('path');
 require('dotenv').config();
 const AIService = require('./ai-service');
 const ConfigService = require('./config-service');
@@ -9,6 +10,7 @@ const SupabaseService = require('./supabase-service');
 const SupabaseConfigService = require('./supabase-config-service');
 const KnowledgeService = require('./knowledge-service');
 const UserKnowledgeService = require('./user-knowledge-service');
+const AuthService = require('./auth-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -26,12 +28,19 @@ app.use(express.json());
 // Servir les fichiers statiques
 app.use(express.static('public'));
 
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/login.html'));
+});
+
 // Initialiser les services
 const aiService = new AIService();
 const supabaseService = new SupabaseService();
 const supabaseConfigService = new SupabaseConfigService();
 const knowledgeService = new KnowledgeService();
 const userKnowledgeService = new UserKnowledgeService(supabaseService);
+const authService = new AuthService(supabaseService);
+const connectedUserIds = new Set();
+const socketUserMap = new Map();
 
 // Routes
 app.get('/health', (req, res) => {
@@ -61,8 +70,89 @@ app.get('/api/bot/status', async (req, res) => {
       'monitor': 'active',
       'notification': 'active',
       'database': dbConnected ? 'active' : 'inactive'
-    }
+    },
+    connectedUsers: {
+      sockets: io.engine.clientsCount,
+      authenticated: connectedUserIds.size
+    },
   });
+});
+
+app.get('/api/users/connected', (req, res) => {
+  return res.status(200).json({
+    success: true,
+    sockets: io.engine.clientsCount,
+    authenticatedUsers: connectedUserIds.size,
+  });
+});
+
+app.post('/api/auth/request-code', async (req, res) => {
+  try {
+    const { email, fullName } = req.body || {};
+    const result = await authService.requestVerificationCode(email, fullName);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: error.message,
+    });
+  }
+});
+
+app.get('/api/auth/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await supabaseService.getUserById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, code: 'USER_NOT_FOUND', message: 'Utilisateur introuvable.' });
+    }
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.full_name || '',
+        isVerified: user.is_verified
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
+});
+
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+    const result = await authService.verifyCode(email, code);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: error.message,
+    });
+  }
+});
+
+app.get('/api/knowledge/stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'userId requis' });
+    }
+    const chunks = await supabaseService.getUserKnowledgeChunks(userId, 5000);
+    const sources = new Set(chunks.map((chunk) => chunk.source_name));
+    return res.status(200).json({
+      success: true,
+      userId,
+      chunks: chunks.length,
+      documents: sources.size,
+      sourceNames: [...sources],
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
 });
 
 // Route pour valider les clés API
@@ -238,6 +328,20 @@ io.on('connection', (socket) => {
     console.log(`Message reçu de ${userId}: ${message}`);
     
     try {
+      const user = await supabaseService.getUserById(userId);
+      if (!user || !user.is_verified) {
+        socket.emit('response', {
+          message: 'Votre compte doit être vérifié par code email avant d’utiliser le bot.',
+          timestamp: new Date().toISOString(),
+          bot: 'DevOps Assistant Auth',
+          sources: []
+        });
+        return;
+      }
+
+      connectedUserIds.add(userId);
+      socketUserMap.set(socket.id, userId);
+
       // Charger la configuration utilisateur depuis Supabase (clé non masquée côté serveur)
       let userConfig = null;
       let apiKey = process.env.OPENAI_API_KEY;
@@ -266,7 +370,7 @@ io.on('connection', (socket) => {
       if (ingestion.ingestedFiles > 0) {
         console.log(`Knowledge ingest: ${ingestion.ingestedFiles} fichier(s), ${ingestion.ingestedChunks} chunk(s), user=${userId}`);
       }
-      const userKnowledgeContext = await userKnowledgeService.getContextForQuery(userId, message, 4);
+      const userKnowledgeContext = await userKnowledgeService.getContextForQuery(userId, message, 8);
 
       if (userConfig && apiKey && provider !== 'local-rag') {
         if (provider === 'openai') {
@@ -343,6 +447,11 @@ io.on('connection', (socket) => {
   });
   
   socket.on('disconnect', () => {
+    const userId = socketUserMap.get(socket.id);
+    if (userId) {
+      connectedUserIds.delete(userId);
+      socketUserMap.delete(socket.id);
+    }
     console.log('Client déconnecté:', socket.id);
   });
 });

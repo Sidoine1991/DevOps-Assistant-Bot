@@ -9,8 +9,10 @@ require('dotenv').config();
 const DATA_DIR = process.env.RAG_DATA_DIR || 'D:/Dev/Projet_fil/data_course';
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
 const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
-const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 120);
-const RAG_INGEST_BATCH_SIZE = Number(process.env.RAG_INGEST_BATCH_SIZE || 12);
+const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 1200);
+const RAG_INGEST_BATCH_SIZE = Number(process.env.RAG_INGEST_BATCH_SIZE || 16);
+const RAG_CHUNK_SIZE = Number(process.env.RAG_CHUNK_SIZE || 1200);
+const RAG_CHUNK_OVERLAP = Number(process.env.RAG_CHUNK_OVERLAP || 150);
 const CHROMA_HOST = process.env.CHROMA_HOST || '127.0.0.1';
 const CHROMA_PORT = Number(process.env.CHROMA_PORT || 8000);
 const CHROMA_SSL = process.env.CHROMA_SSL === 'true';
@@ -27,7 +29,7 @@ function getChromaPath() {
   return `${raw.replace(/\/$/, '')}/api/v1`;
 }
 
-function chunkText(text, chunkSize = 1800, overlap = 250) {
+function chunkText(text, chunkSize = RAG_CHUNK_SIZE, overlap = RAG_CHUNK_OVERLAP) {
   const chunks = [];
   let start = 0;
   while (start < text.length) {
@@ -122,13 +124,26 @@ async function main() {
       globalIndex++;
     }
 
-    for (let start = 0; start < ids.length; start += RAG_INGEST_BATCH_SIZE) {
-      const end = Math.min(start + RAG_INGEST_BATCH_SIZE, ids.length);
-      await collection.add({
-        ids: ids.slice(start, end),
-        documents: documents.slice(start, end),
-        metadatas: metadatas.slice(start, end),
-      });
+    let batchSize = Math.max(1, RAG_INGEST_BATCH_SIZE);
+    for (let start = 0; start < ids.length;) {
+      const end = Math.min(start + batchSize, ids.length);
+      try {
+        await collection.add({
+          ids: ids.slice(start, end),
+          documents: documents.slice(start, end),
+          metadatas: metadatas.slice(start, end),
+        });
+        start = end;
+      } catch (error) {
+        const msg = (error && error.message) ? error.message : String(error);
+        const isMemoryIssue = /bad allocation|allocate memory|out of memory/i.test(msg);
+        if (isMemoryIssue && batchSize > 1) {
+          batchSize = Math.max(1, Math.floor(batchSize / 2));
+          console.warn(`⚠️ Mémoire insuffisante, réduction du batch à ${batchSize}`);
+          continue;
+        }
+        throw error;
+      }
     }
 
     console.log(`✅ Indexation terminée pour ${path.basename(filePath)}`);

@@ -11,6 +11,7 @@ class RetrievalService {
     this.chromaSsl = process.env.CHROMA_SSL === 'true';
     this.chromaUrl = process.env.CHROMA_URL || '';
     this.chromaFallbackUrl = process.env.CHROMA_FALLBACK_URL || '';
+    this.defaultTopK = Number(process.env.RAG_RETRIEVAL_TOP_K || 16);
     this.client = null;
     this.collection = null;
     this.gemini = null;
@@ -115,7 +116,7 @@ class RetrievalService {
     return null;
   }
 
-  async retrieveRelevantChunks(query, topK = 4) {
+  async retrieveRelevantChunks(query, topK = this.defaultTopK) {
     if (!this.enabled || !this.collection) return [];
 
     try {

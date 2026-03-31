@@ -267,7 +267,7 @@ class SupabaseService {
       if (error) throw error;
       return Array.isArray(data) ? data.length : 0;
     } catch (error) {
-      if (error && error.code === '42P01') {
+      if (error && (error.code === '42P01' || error.code === 'PGRST205')) {
         console.warn('Table user_knowledge_chunks absente. Exécutez la migration SQL dédiée.');
         return 0;
       }
@@ -290,11 +290,118 @@ class SupabaseService {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      if (error && error.code === '42P01') {
+      if (error && (error.code === '42P01' || error.code === 'PGRST205')) {
         return [];
       }
       console.error('Erreur récupération user_knowledge_chunks:', error);
       return [];
+    }
+  }
+
+  async upsertUserByEmail(email, fullName = '') {
+    if (!this.client || !email) return null;
+    try {
+      const payload = {
+        email,
+        updated_at: new Date().toISOString()
+      };
+      if (fullName && fullName.trim()) {
+        payload.full_name = fullName.trim();
+      }
+      const { data, error } = await this.client
+        .from('users')
+        .upsert([payload], { onConflict: 'email' })
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erreur upsert user:', error);
+      return null;
+    }
+  }
+
+  async saveVerificationCode({ userId, email, code, expiresAt }) {
+    if (!this.client) return false;
+    try {
+      const { error } = await this.client
+        .from('auth_verification_codes')
+        .insert([{
+          user_id: userId,
+          email,
+          code,
+          expires_at: expiresAt,
+          created_at: new Date().toISOString(),
+        }]);
+      return !error;
+    } catch (error) {
+      console.error('Erreur saveVerificationCode:', error);
+      return false;
+    }
+  }
+
+  async getLatestVerificationCode(email) {
+    if (!this.client || !email) return null;
+    try {
+      const { data, error } = await this.client
+        .from('auth_verification_codes')
+        .select('*')
+        .eq('email', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } catch (error) {
+      console.error('Erreur getLatestVerificationCode:', error);
+      return null;
+    }
+  }
+
+  async markVerificationCodeUsed(codeId) {
+    if (!this.client || !codeId) return false;
+    try {
+      const { error } = await this.client
+        .from('auth_verification_codes')
+        .update({ used_at: new Date().toISOString() })
+        .eq('id', codeId);
+      return !error;
+    } catch (error) {
+      console.error('Erreur markVerificationCodeUsed:', error);
+      return false;
+    }
+  }
+
+  async verifyUserEmail(email) {
+    if (!this.client || !email) return null;
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .update({ is_verified: true, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('email', email)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erreur verifyUserEmail:', error);
+      return null;
+    }
+  }
+
+  async getUserById(userId) {
+    if (!this.client || !userId) return null;
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } catch (error) {
+      console.error('Erreur getUserById:', error);
+      return null;
     }
   }
 }

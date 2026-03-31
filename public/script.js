@@ -2,6 +2,7 @@
 const socket = io();
 let startTime = Date.now();
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
+let isUserVerified = localStorage.getItem('devops-user-verified') === 'true';
 
 // Sauvegarder l'ID utilisateur pour la session
 localStorage.setItem('devops-user-id', userId);
@@ -104,6 +105,11 @@ function setInputState(isBusy) {
 }
 
 async function sendMessage() {
+    if (!isUserVerified) {
+        showNotification('Vérifiez votre compte email avant d’utiliser le bot.', 'error');
+        window.location.href = '/login.html';
+        return;
+    }
     const message = messageInput.value.trim();
     if (message) {
         addMessage(message, 'user', new Date().toISOString());
@@ -129,6 +135,59 @@ async function sendMessage() {
         attachmentPreview.textContent = '';
         attachmentInput.value = '';
         messageInput.focus();
+    }
+}
+
+function setAuthVerified(user) {
+    isUserVerified = true;
+    if (user && user.id) {
+        userId = user.id;
+    }
+    localStorage.setItem('devops-user-id', userId);
+    localStorage.setItem('devops-user-verified', 'true');
+}
+
+function logout() {
+    localStorage.removeItem('devops-user-id');
+    localStorage.removeItem('devops-user-verified');
+    localStorage.removeItem('devops-user-name');
+    window.location.href = '/login.html';
+}
+
+async function refreshConnectedUsers() {
+    try {
+        const connectedRes = await fetch('/api/users/connected');
+        const connected = await connectedRes.json();
+        const connectedInfo = document.getElementById('connectedUsersInfo');
+        if (connectedInfo && connected.success) {
+            connectedInfo.textContent = `Utilisateurs connectés: ${connected.sockets} (auth: ${connected.authenticatedUsers})`;
+        }
+    } catch (error) {
+        // silencieux
+    }
+}
+
+async function loadAccountOwner() {
+    const accountOwner = document.getElementById('accountOwner');
+    if (!accountOwner) return;
+
+    const localName = localStorage.getItem('devops-user-name');
+    if (localName) {
+        accountOwner.textContent = localName;
+    }
+
+    try {
+        const res = await fetch(`/api/auth/user/${userId}`);
+        const result = await res.json();
+        if (result.success && result.user) {
+            const displayName = result.user.fullName || result.user.email || userId;
+            accountOwner.textContent = displayName;
+            if (result.user.fullName) {
+                localStorage.setItem('devops-user-name', result.user.fullName);
+            }
+        }
+    } catch (error) {
+        // garder la valeur locale si dispo
     }
 }
 
@@ -283,6 +342,10 @@ function updateMetrics() {
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', async () => {
+    if (!isUserVerified) {
+        window.location.href = '/login.html';
+        return;
+    }
     // Focus sur l'input
     messageInput.focus();
     
@@ -298,12 +361,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Gestion du bouton d'envoi
     sendButton.addEventListener('click', sendMessage);
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+    }
     attachButton.addEventListener('click', () => attachmentInput.click());
     attachmentInput.addEventListener('change', async (event) => {
         const files = Array.from(event.target.files || []).slice(0, 4);
         const loaded = [];
+        const rejected = [];
         for (const file of files) {
-            if (file.size > 3 * 1024 * 1024) {
+            if (file.size > 12 * 1024 * 1024) {
+                rejected.push(file.name);
                 continue;
             }
             const data = await readFileAsDataURL(file);
@@ -317,7 +386,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         attachmentPreview.textContent = loaded.length > 0
             ? `Pièces jointes: ${loaded.map((f) => f.name).join(', ')}`
             : '';
+        if (rejected.length > 0) {
+            showNotification(`Fichiers ignorés (>12MB): ${rejected.join(', ')}`, 'error');
+        }
     });
+
+    await refreshConnectedUsers();
+    setInterval(refreshConnectedUsers, 10000);
+    await loadAccountOwner();
     
     // Mettre à jour le statut IA dans l'interface
     const config = await loadUserConfig();

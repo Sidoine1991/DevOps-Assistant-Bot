@@ -36,7 +36,9 @@ class UserKnowledgeService {
       const raw = Buffer.from(base64, 'base64');
       const mime = attachment.type.toLowerCase();
 
-      if (mime.includes('pdf')) {
+      const fileName = (attachment.name || '').toLowerCase();
+      const looksLikePdf = mime.includes('pdf') || fileName.endsWith('.pdf');
+      if (looksLikePdf) {
         const parser = new PDFParse({ data: raw });
         try {
           const parsed = await parser.getText();
@@ -74,6 +76,15 @@ class UserKnowledgeService {
       }
     }
     return score;
+  }
+
+  normalizeQuery(query = '') {
+    let q = String(query || '').toLowerCase();
+    q = q
+      .replace(/dev ops/g, 'devops')
+      .replace(/ci\/cd/g, 'ci cd')
+      .replace(/contenurisation|contenerisation/g, 'conteneurisation');
+    return q;
   }
 
   async ingestAttachments(userId, attachments = []) {
@@ -127,17 +138,40 @@ class UserKnowledgeService {
       return { chunks: [], sources: [] };
     }
 
-    const queryTokens = this.tokenize(query);
+    const normalizedQuery = this.normalizeQuery(query);
+    const queryTokens = this.tokenize(normalizedQuery);
     const ranked = rows
       .map((row) => ({
         row,
-        score: this.scoreChunk(queryTokens, row.chunk_text)
+        score: this.scoreChunk(queryTokens, row.chunk_text),
+        createdAt: new Date(row.created_at || 0).getTime()
       }))
       .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => (b.score - a.score) || (b.createdAt - a.createdAt))
       .slice(0, topK);
 
-    const chunks = ranked.map((item) => ({
+    const latestSource = rows
+      .map((row) => ({
+        source: row.source_name || 'document utilisateur',
+        createdAt: new Date(row.created_at || 0).getTime()
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt)[0]?.source;
+
+    // Si aucun match lexical strict, on privilégie le dernier document uploadé
+    // pour répondre avec un contexte plus cohérent.
+    const selected = ranked.length > 0
+      ? ranked
+      : rows
+          .filter((row) => (row.source_name || 'document utilisateur') === latestSource)
+          .sort((a, b) => (a.chunk_index || 0) - (b.chunk_index || 0))
+          .slice(0, topK)
+          .map((row) => ({
+            row,
+            score: 0,
+            createdAt: new Date(row.created_at || 0).getTime()
+          }));
+
+    const chunks = selected.map((item) => ({
       content: item.row.chunk_text,
       metadata: {
         source: item.row.source_name || 'document utilisateur',
@@ -145,7 +179,7 @@ class UserKnowledgeService {
       }
     }));
 
-    const sources = [...new Set(ranked.map((item) => item.row.source_name || 'document utilisateur'))]
+    const sources = [...new Set(selected.map((item) => item.row.source_name || 'document utilisateur'))]
       .map((name) => ({
         title: `Document utilisateur: ${name}`
       }));

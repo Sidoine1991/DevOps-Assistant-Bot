@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accueil - DevOps Assistant Bot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { overflow: auto; }
+        .landing {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .landing-card {
+            width: 100%;
+            max-width: 920px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 18px;
+            box-shadow: 0 20px 40px rgba(0,0,0,.12);
+            padding: 2rem;
+        }
+        .landing-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .landing-logo {
+            width: 110px;
+            height: 110px;
+            object-fit: contain;
+            border-radius: 14px;
+            background: #fff;
+            box-shadow: 0 6px 16px rgba(0,0,0,.1);
+            padding: .4rem;
+        }
+        .landing-actions a {
+            text-decoration: none;
+            margin-left: .5rem;
+            padding: .65rem 1rem;
+            border-radius: 10px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .btn-login { background: #edf2ff; color: #334155; }
+        .btn-register { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+        .landing h1 { margin-bottom: .6rem; color: #1f2937; }
+        .landing p { color: #4b5563; line-height: 1.6; margin-bottom: .8rem; }
+        .landing ul { color: #374151; padding-left: 1.2rem; line-height: 1.7; }
+    </style>
+</head>
+<body>
+    <section class="landing">
+        <div class="landing-card">
+            <div class="landing-top">
+                <img class="landing-logo" src="media/Logo%20du%20bot%20DevOps%20Assistant.png" alt="Logo DevOps Assistant Bot">
+                <div class="landing-actions">
+                    <a class="btn-login" href="/login.html">Se connecter</a>
+                    <a class="btn-register" href="/registration.html">S'inscrire</a>
+                </div>
+            </div>
+            <h1>DevOps Assistant Bot - Projet fil conducteur</h1>
+            <p>
+                Ce projet sanctionne la fin de formation de la bourse <strong>Africa Tech Tour 2025</strong>,
+                parcours <strong>DevOps</strong>. Il met en pratique les notions vues durant la formation
+                (CI/CD, Docker, monitoring, automatisation, bonnes pratiques cloud).
+            </p>
+            <p>
+                Face aux difficultes rencontrees par les debutants, nous avons concu ce bot pour assister
+                les apprenants avec des reponses actionnables, du contexte RAG et un accompagnement pas a pas.
+            </p>
+            <ul>
+                <li>Assistance DevOps (deploiement, monitoring, debug, optimisation)</li>
+                <li>Base de connaissance evolutive via upload de documents</li>
+                <li>Connexion securisee par verification email avant utilisation</li>
+            </ul>
+        </div>
+    </section>
+</body>
+</html>

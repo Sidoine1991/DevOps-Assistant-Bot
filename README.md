@@ -180,6 +180,9 @@ Variables principales à renseigner :
 - `SUPABASE_ANON_KEY=`
 - `RAG_ENABLED=true`
 - `RAG_COLLECTION=devops_courses`
+- `RAG_MAX_CHUNKS_PER_DOC=1200`
+- `RAG_INGEST_BATCH_SIZE=16`
+- `RAG_RETRIEVAL_TOP_K=16`
 - `CHROMA_HOST=`
 - `CHROMA_PORT=`
 - `CHROMA_SSL=`
@@ -187,6 +190,13 @@ Variables principales à renseigner :
 - `CHROMA_FALLBACK_URL=` (optionnel, endpoint secondaire)
 - `RAG_CHROMA_BACKUP_URL=` (optionnel, URL Google Drive du zip de backup)
 - `RAG_CHROMA_BACKUP_ZIP_PATH=` (optionnel, chemin local du zip)
+- `ADMIN_EMAIL=syebadokpo@gmail.com`
+- `SMTP_HOST=`
+- `SMTP_PORT=587`
+- `SMTP_USER=`
+- `SMTP_PASS=`
+- `SMTP_SECURE=false`
+- `AUTH_CODE_TTL_MINUTES=10`
 
 ### Diagnostic configuration IA et mode degrade
 
@@ -291,6 +301,31 @@ Des captures d’écran de l’interface se trouvent dans `media/` (démonstrati
   - `USER_KNOWLEDGE_CHUNK_SIZE` (défaut `1200`)
   - `USER_KNOWLEDGE_CHUNK_OVERLAP` (défaut `150`)
   - `USER_KNOWLEDGE_MAX_CHUNKS_PER_DOC` (défaut `60`)
+
+## 🔐 Authentification par code email
+
+- Avant d'utiliser le bot, l'utilisateur doit :
+  - saisir son nom + email,
+  - recevoir un code de vérification,
+  - valider ce code.
+- Routes backend :
+  - `POST /api/auth/request-code`
+  - `POST /api/auth/verify-code`
+- Le nombre d'utilisateurs connectés est exposé via :
+  - `GET /api/users/connected`
+- Migrations SQL à exécuter :
+  - `database/migrations/20260331_add_users_and_auth_codes.sql`
+  - `database/migrations/20260331_add_users_full_name.sql`
+  - `database/migrations/20260331_add_user_knowledge_chunks.sql`
+  - `database/migrations/20260331_fix_auth_rls_backend_access.sql`
+
+## 🏠 Page d'accueil du projet
+
+- La route `/` affiche maintenant une page de présentation du projet fil conducteur Africa Tech Tour 2025 (parcours DevOps).
+- Le logo de l'application est affiché sur l'accueil.
+- Navigation intégrée :
+  - `Se connecter` -> `/index.html`
+  - `S'inscrire` -> `/registration.html`
 
 ## Exploitation configuration IA
 

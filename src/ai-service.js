@@ -55,6 +55,7 @@ class AIService {
   async getDevOpsResponse(message, context = {}) {
     try {
       const provider = context.provider || 'openai';
+      const normalizedQuestion = this.normalizeUserQuestion(message);
       let systemPrompt = this.buildDevOps_prompt(context);
       let ragChunks = [];
       let ragSources = [];
@@ -67,7 +68,10 @@ class AIService {
       // Ajouter le contexte documentaire RAG si disponible
       let ragContext = '';
       if (this.retrievalService && this.retrievalService.enabled) {
-        ragChunks = await this.retrievalService.retrieveRelevantChunks(message, 4);
+        ragChunks = await this.retrievalService.retrieveRelevantChunks(
+          this.buildRetrievalQuery(normalizedQuestion),
+          Number(process.env.RAG_RETRIEVAL_TOP_K || 16)
+        );
         if (ragChunks.length > 0) {
           ragSources = [...new Set(ragChunks.map((c) => c.metadata.source || 'cours'))];
           const formatted = ragChunks
@@ -90,10 +94,10 @@ class AIService {
       // Mode local RAG: répond sans clé API, directement depuis les extraits.
       if (context.preferLocalRag === true || provider === 'local-rag') {
         if (!ragChunks || ragChunks.length === 0) {
-          const fallback = `📚 Mode local RAG actif, mais aucun document pertinent n'a été trouvé (ou le moteur RAG est indisponible). ${this.getFallbackResponse(message)}`;
+          const fallback = `📚 Mode local RAG actif, mais aucun document pertinent n'a été trouvé (ou le moteur RAG est indisponible). ${this.getFallbackResponse(normalizedQuestion)}`;
           return this.appendSources(fallback, grounding.sources);
         }
-        return this.buildLocalRagResponse(message, ragChunks, grounding.sources);
+        return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
       }
 
       // Utiliser le provider spécifié ou OpenAI par défaut
@@ -110,8 +114,8 @@ class AIService {
       } else {
         console.log('Aucun provider IA disponible, utilisation du fallback');
         return ragChunks.length > 0
-          ? this.buildLocalRagResponse(message, ragChunks, grounding.sources)
-          : this.appendSources(this.getFallbackResponse(message), grounding.sources);
+          ? this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources)
+          : this.appendSources(this.getFallbackResponse(normalizedQuestion), grounding.sources);
       }
     } catch (error) {
       console.error('Erreur IA:', error);
@@ -223,6 +227,136 @@ class AIService {
     return `${answer}\n\nSources utilisees:\n${sourceLines}`;
   }
 
+  tokenize(text) {
+    return (text || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter((token) => token.length > 2);
+  }
+
+  normalizeUserQuestion(text) {
+    let cleaned = (text || '').trim();
+    const replacements = [
+      [/defisni/gi, 'definis'],
+      [/defisnir/gi, 'definir'],
+      [/contenerisation/gi, 'conteneurisation'],
+      [/contenurisation/gi, 'conteneurisation'],
+      [/dev ops/gi, 'devops'],
+      [/\s+/g, ' '],
+    ];
+
+    for (const [pattern, replacement] of replacements) {
+      cleaned = cleaned.replace(pattern, replacement);
+    }
+    return cleaned;
+  }
+
+  buildRetrievalQuery(question) {
+    const q = (question || '').toLowerCase();
+    if (q.includes('conteneurisation') || q.includes('docker')) {
+      return `${question} docker image container dockerfile build run registry`;
+    }
+    if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) {
+      return `${question} integration continue deploiement continu pipeline build test release`;
+    }
+    if (q.includes('monitoring') || q.includes('metrique') || q.includes('métrique')) {
+      return `${question} monitoring metriques observabilite alerting logs prometheus grafana`;
+    }
+    if (q.includes('devops')) {
+      return `${question} culture devops collaboration automation feedback ci cd`;
+    }
+    return question;
+  }
+
+  detectIntent(question) {
+    const q = (question || '').toLowerCase();
+    if (q.includes('conteneurisation') || q.includes('docker')) return 'containerization';
+    if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) return 'cicd';
+    if (q.includes('monitoring') || q.includes('metrique') || q.includes('métrique')) return 'monitoring';
+    if (q.includes('devops')) return 'devops';
+    return 'generic';
+  }
+
+  buildIntentFallback(intent) {
+    switch (intent) {
+      case 'containerization':
+        return 'La conteneurisation consiste à empaqueter une application avec ses dépendances dans une image exécutable. Étapes clés: créer un Dockerfile, builder l’image, lancer le container puis publier l’image dans un registry.';
+      case 'cicd':
+        return 'Le CI/CD automatise build, tests et déploiement. Flux classique: commit -> pipeline CI (build+tests) -> validation -> CD vers staging/production.';
+      case 'monitoring':
+        return 'Le monitoring suit la santé et la performance (latence, erreurs, saturation). On combine métriques, logs et alertes pour agir rapidement.';
+      case 'devops':
+        return 'DevOps rapproche Dev et Ops pour livrer plus vite et de manière fiable via automatisation, collaboration et amélioration continue.';
+      default:
+        return this.getFallbackResponse('');
+    }
+  }
+
+  cleanChunkText(text) {
+    return (text || '')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, ' ')
+      .replace(/\b\d{1,4}\(\d{1,4}\)\b/g, ' ')
+      .replace(/[\u2022\u25cf\u25a0]/g, ' ')
+      .replace(/\s*[:;,-]\s*$/g, '')
+      .replace(/[._]{3,}/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  extractRelevantSentences(query, ragChunks, limit = 4) {
+    const queryTokens = this.tokenize(query);
+    const scored = [];
+
+    for (const chunk of ragChunks || []) {
+      const source = chunk?.metadata?.source || 'document';
+      const cleaned = this.cleanChunkText(chunk?.content || '');
+      const sentences = cleaned
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 40 && s.length <= 260);
+
+      for (const sentence of sentences) {
+        const tokens = new Set(this.tokenize(sentence));
+        let score = 0;
+        for (const token of queryTokens) {
+          if (tokens.has(token)) score += 1;
+        }
+        if (score > 0) {
+          scored.push({ sentence, source, score });
+        }
+      }
+    }
+
+    const dedup = [];
+    const seen = new Set();
+    for (const item of scored.sort((a, b) => b.score - a.score)) {
+      const key = item.sentence.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        dedup.push(item);
+      }
+      if (dedup.length >= limit) break;
+    }
+    return dedup;
+  }
+
+  buildIntentAnswer(intent, message) {
+    switch (intent) {
+      case 'containerization':
+        return 'La conteneurisation permet d’exécuter une application de façon reproductible avec ses dépendances. Commencez par un Dockerfile minimal, testez en local, puis déployez via une pipeline CI/CD.';
+      case 'cicd':
+        return 'Le CI/CD automatise build, tests et déploiement pour réduire les erreurs manuelles. Le flux recommandé est: commit, tests automatiques, validation, puis déploiement progressif.';
+      case 'monitoring':
+        return 'Le monitoring fiable combine métriques, logs et alertes. Surveillez en priorité la latence, le taux d’erreur et la saturation CPU/mémoire/disque.';
+      case 'devops':
+        return 'La culture DevOps repose sur la collaboration entre Dev et Ops, l’automatisation des livraisons et l’amélioration continue basée sur le feedback terrain.';
+      default:
+        return `Voici une réponse basée sur vos documents pour "${message}".`;
+    }
+  }
+
   buildLocalRagResponse(message, ragChunks = [], externalSources = []) {
     if (!ragChunks || ragChunks.length === 0) {
       return this.appendSources(
@@ -231,13 +365,36 @@ class AIService {
       );
     }
 
-    const top = ragChunks.slice(0, 3);
-    const bulletPoints = top
-      .map((chunk, idx) => `- Point ${idx + 1}: ${chunk.content.slice(0, 260).replace(/\s+/g, ' ')}...`)
-      .join('\n');
-    const sources = [...new Set(top.map((c) => c.metadata?.source || 'cours'))].join(', ');
+    const lower = (message || '').toLowerCase().trim();
+    if (['bonjour', 'salut', 'hello', 'bonsoir'].includes(lower)) {
+      const greet = 'Bonjour 👋 Je suis prêt à vous aider sur le DevOps (CI/CD, Docker, monitoring, Kubernetes, troubleshooting). Posez-moi votre question précise.';
+      return this.appendSources(greet, externalSources);
+    }
 
-    const ragAnswer = `Voici une réponse fondée sur vos documents RAG pour: "${message}"\n\n${bulletPoints}\n\nSources utilisees:\n- ${sources}`;
+    const relevant = this.extractRelevantSentences(message, ragChunks, 5);
+    const intent = this.detectIntent(message);
+    if (relevant.length === 0) {
+      const fallback = this.buildIntentFallback(intent);
+      return this.appendSources(`Je n'ai pas trouvé de passage suffisamment clair dans les documents pour cette question. ${fallback}`, externalSources);
+    }
+
+    const bulletPoints = relevant
+      .map((item, idx) => `- Point ${idx + 1}: ${item.sentence.replace(/\s+/g, ' ').trim()}`)
+      .join('\n');
+    const sources = [...new Set(relevant.map((item) => item.source))].join(', ');
+
+    const intentLabel = intent === 'containerization'
+      ? 'Conteneurisation'
+      : intent === 'cicd'
+        ? 'CI/CD'
+        : intent === 'monitoring'
+          ? 'Monitoring'
+          : intent === 'devops'
+            ? 'Culture DevOps'
+            : 'Synthèse';
+
+    const coreAnswer = this.buildIntentAnswer(intent, message);
+    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nÉléments pertinents extraits des documents:\n${bulletPoints}\n\nSources utilisees:\n- ${sources}`;
     return this.appendSources(ragAnswer, externalSources);
   }
 
@@ -266,23 +423,40 @@ Réponds toujours en français et de manière helpful.`;
   }
 
   getFallbackResponse(message) {
-    const fallbackResponses = {
-      'deploy': 'Je peux vous aider avec le déploiement ! Quel type d\'application voulez-vous déployer ? Docker, Kubernetes, ou plateforme cloud ?',
-      'monitor': 'Voici l\'état actuel du système : CPU: 45%, Mémoire: 62%, Disque: 78%. Que souhaitez-vous monitorer spécifiquement ?',
-      'error': 'Je détecte une demande d\'aide pour les erreurs. Pouvez-vous me donner plus de détails sur le problème rencontré ?',
-      'optim': 'Pour l\'optimisation, je peux analyser les performances de votre application. Quels aspects souhaitez-vous améliorer ?',
-      'default': 'Je suis votre assistant DevOps ! Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation. Comment puis-je vous aider ?'
-    };
-
     const lowerMessage = (message || '').toLowerCase();
-    
-    for (const [key, response] of Object.entries(fallbackResponses)) {
-      if (lowerMessage.includes(key)) {
-        return response;
-      }
+
+    if (
+      lowerMessage.includes('defini ci') ||
+      lowerMessage.includes('défini ci') ||
+      lowerMessage.includes('c est quoi ci') ||
+      lowerMessage.includes("c'est quoi ci")
+    ) {
+      return 'CI signifie Intégration Continue. C’est une pratique où chaque changement de code est automatiquement testé et validé via un pipeline (build + tests + qualité) pour détecter les erreurs tôt.';
     }
-    
-    return fallbackResponses.default;
+
+    if (
+      lowerMessage.includes('defini devops') ||
+      lowerMessage.includes('définis devops') ||
+      lowerMessage.includes('c est quoi devops') ||
+      lowerMessage.includes("c'est quoi devops")
+    ) {
+      return 'DevOps est une approche qui rapproche Développement (Dev) et Exploitation (Ops) pour livrer plus vite et de manière fiable grâce à l’automatisation (CI/CD), au monitoring, et à des boucles d’amélioration continue.';
+    }
+
+    if (lowerMessage.includes('deploy')) {
+      return 'Je peux vous aider avec le déploiement ! Quel type d\'application voulez-vous déployer ? Docker, Kubernetes, ou plateforme cloud ?';
+    }
+    if (lowerMessage.includes('monitor')) {
+      return 'Voici l\'état actuel du système : CPU: 45%, Mémoire: 62%, Disque: 78%. Que souhaitez-vous monitorer spécifiquement ?';
+    }
+    if (lowerMessage.includes('error') || lowerMessage.includes('erreur')) {
+      return 'Je détecte une demande d\'aide pour les erreurs. Pouvez-vous me donner plus de détails sur le problème rencontré ?';
+    }
+    if (lowerMessage.includes('optim')) {
+      return 'Pour l\'optimisation, je peux analyser les performances de votre application. Quels aspects souhaitez-vous améliorer ?';
+    }
+
+    return 'Je suis votre assistant DevOps ! Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation. Comment puis-je vous aider ?';
   }
 
   async analyzeSystemMetrics(metrics) {

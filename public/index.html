@@ -16,9 +16,15 @@
                     <i class="material-icons">smart_toy</i>
                     DevOps Assistant Bot
                 </h1>
-                <div class="status-indicator">
-                    <span class="status-dot online"></span>
-                    <span>En ligne</span>
+                <div style="display:flex;align-items:center;gap:.6rem;">
+                    <div class="status-indicator">
+                        <span class="status-dot online"></span>
+                        <span>En ligne</span>
+                    </div>
+                    <button id="logoutBtn" class="btn btn-secondary" style="padding:.4rem .7rem;min-height:auto;">
+                        <i class="material-icons" style="font-size:1rem;">logout</i>
+                        Deconnexion
+                    </button>
                 </div>
             </div>
         </header>
@@ -67,6 +73,7 @@
                     </div>
                     <div id="attachmentPreview" style="margin-top:0.5rem;font-size:0.8rem;color:#666;"></div>
                     <div id="connectionStatus" style="margin-top:0.4rem;font-size:0.8rem;color:#666;" aria-live="polite">Connecté au serveur</div>
+                    <div style="margin-top:0.4rem;font-size:0.8rem;color:#666;" id="connectedUsersInfo">Utilisateurs connectés: ...</div>
                 </div>
             </div>
 
@@ -92,6 +99,10 @@
                         <div class="info-item">
                             <span class="label">Uptime:</span>
                             <span class="value" id="uptime">0h 0m</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Titulaire:</span>
+                            <span class="value" id="accountOwner">-</span>
                         </div>
                     </div>
                     <div style="margin-top: 1rem;">
