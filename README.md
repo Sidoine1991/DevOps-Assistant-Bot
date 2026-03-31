@@ -2,6 +2,7 @@
 
 ## Description
 Chatbot intelligent qui assiste les développeurs dans les tâches DevOps : déploiement, monitoring, gestion des erreurs.
+An online web app that helps DevOps engineers solve technical issues and project tasks.
 
 ## Architecture
 ```
