@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription - DevOps Assistant Bot</title>
-    <link rel="icon" type="image/png" href="/media/Logo%20du%20bot%20DevOps%20Assistant.png">
+    <link rel="icon" type="image/svg+xml" href="/media/logo.svg">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -47,7 +47,7 @@
 <body>
     <div class="auth-wrap">
         <div class="auth-card">
-            <img class="logo" src="/media/Logo%20du%20bot%20DevOps%20Assistant.png" alt="Logo DevOps Assistant Bot">
+            <img class="logo" src="/media/logo.svg" width="92" height="92" alt="Logo DevOps Assistant Bot">
             <h2>Creer votre compte</h2>
             <p>Créez votre compte avec nom, email et mot de passe.</p>
 
@@ -64,6 +64,8 @@
         </div>
     </div>
 
+    <script src="/backend-config.js"></script>
+    <script src="/api-base.js"></script>
     <script>
         const msg = document.getElementById('msg');
         const fullNameInput = document.getElementById('fullName');
@@ -77,7 +79,7 @@
                 msg.textContent = 'Email et mot de passe requis.';
                 return;
             }
-            const res = await fetch('/api/auth/register', {
+            const res = await fetch(window.apiUrl('/api/auth/register'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password, fullName })

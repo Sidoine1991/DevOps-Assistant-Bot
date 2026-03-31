@@ -1,5 +1,8 @@
-// Connexion WebSocket au serveur
-const socket = io();
+// Connexion WebSocket (même origine ou DEVOPS_API_BASE si UI servie ailleurs)
+const backendOrigin = typeof window !== 'undefined' && window.DEVOPS_API_BASE ? window.DEVOPS_API_BASE : '';
+const socket = backendOrigin
+  ? io(backendOrigin, { transports: ['websocket', 'polling'] })
+  : io({ transports: ['websocket', 'polling'] });
 let startTime = Date.now();
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
 let isUserVerified = localStorage.getItem('devops-user-verified') === 'true';
@@ -24,7 +27,7 @@ let lastSentMessage = '';
 // Charger la configuration utilisateur depuis Supabase
 async function loadUserConfig() {
     try {
-        const response = await fetch(`/api/config/load/${userId}`);
+        const response = await fetch(window.apiUrl(`/api/config/load/${userId}`));
         const result = await response.json();
         
         if (result.success && result.config) {
@@ -54,7 +57,7 @@ async function loadUserConfig() {
 // Charger l'historique des conversations depuis Supabase
 async function loadConversationHistory() {
     try {
-        const response = await fetch(`/api/conversations/${userId}?limit=120`);
+        const response = await fetch(window.apiUrl(`/api/conversations/${userId}?limit=120`));
         const result = await response.json();
         chatMessages.innerHTML = '';
         currentTranscript = [];
@@ -167,7 +170,7 @@ function logout() {
 
 async function refreshConnectedUsers() {
     try {
-        const connectedRes = await fetch('/api/users/connected');
+        const connectedRes = await fetch(window.apiUrl('/api/users/connected'));
         const connected = await connectedRes.json();
         const connectedInfo = document.getElementById('connectedUsersInfo');
         if (connectedInfo && connected.success) {
@@ -188,7 +191,7 @@ async function loadAccountOwner() {
     }
 
     try {
-        const res = await fetch(`/api/auth/user/${userId}`);
+        const res = await fetch(window.apiUrl(`/api/auth/user/${userId}`));
         const result = await res.json();
         if (result.success && result.user) {
             const displayName = result.user.fullName || result.user.email || userId;
