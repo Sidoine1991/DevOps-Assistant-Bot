@@ -17,6 +17,9 @@ const attachButton = document.getElementById('attachButton');
 const attachmentPreview = document.getElementById('attachmentPreview');
 const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
 let pendingAttachments = [];
+let conversationRows = [];
+let currentTranscript = [];
+let lastSentMessage = '';
 
 // Charger la configuration utilisateur depuis Supabase
 async function loadUserConfig() {
@@ -51,21 +54,21 @@ async function loadUserConfig() {
 // Charger l'historique des conversations depuis Supabase
 async function loadConversationHistory() {
     try {
-        // Pour l'instant, on ajoute juste un message de bienvenue
-        // Plus tard, on pourra implémenter le chargement depuis Supabase
-        addMessage('🤖 Bonjour ! Je suis votre assistant DevOps intelligent avec IA.', 'bot', new Date().toISOString());
-        addMessage('Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation DevOps.', 'bot', new Date().toISOString());
-        
-        // Vérifier si l'IA est configurée
-        const config = await loadUserConfig();
-        if (!config) {
-            addMessage('🤖 Pour activer les réponses intelligentes, veuillez configurer votre clé API. <a href="/configuration.html" style="color: #667eea; text-decoration: underline;">Configurer maintenant</a>', 'bot', new Date().toISOString());
+        const response = await fetch(`/api/conversations/${userId}?limit=120`);
+        const result = await response.json();
+        chatMessages.innerHTML = '';
+        currentTranscript = [];
+
+        if (result.success && Array.isArray(result.conversations) && result.conversations.length > 0) {
+            conversationRows = [...result.conversations].reverse();
+            conversationRows.forEach((row) => {
+                addMessage(row.user_message, 'user', row.created_at);
+                addMessage(row.bot_response, 'bot', row.created_at);
+            });
+            renderConversationHistoryList();
         } else {
-            if (config.provider === 'local-rag') {
-                addMessage('📚 Mode local RAG activé : je réponds à partir des documents indexés, même sans clé API.', 'bot', new Date().toISOString());
-            } else {
-                addMessage(`🎉 IA configurée avec ${config.provider} ! Je peux maintenant vous fournir des réponses intelligentes spécialisées DevOps.`, 'bot', new Date().toISOString());
-            }
+            addMessage('🤖 Bonjour ! Je suis votre assistant DevOps intelligent avec IA.', 'bot', new Date().toISOString());
+            addMessage('Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation DevOps.', 'bot', new Date().toISOString());
         }
     } catch (error) {
         console.error('Erreur chargement historique:', error);
@@ -86,6 +89,13 @@ socket.on('disconnect', () => {
 
 socket.on('response', (data) => {
     addMessage(data.message, 'bot', data.timestamp, data.sources || []);
+    conversationRows.unshift({
+        id: `live-${Date.now()}`,
+        user_message: lastSentMessage,
+        bot_response: data.message,
+        created_at: data.timestamp
+    });
+    renderConversationHistoryList();
 });
 
 // Envoi de message
@@ -112,6 +122,7 @@ async function sendMessage() {
     }
     const message = messageInput.value.trim();
     if (message) {
+        lastSentMessage = message;
         addMessage(message, 'user', new Date().toISOString());
         setInputState(true);
         
@@ -197,6 +208,68 @@ function sendQuickMessage(message) {
     sendMessage();
 }
 
+function formatConversationForExport() {
+    return currentTranscript
+        .map((item) => `[${new Date(item.timestamp || Date.now()).toLocaleString()}] ${item.sender === 'user' ? 'Vous' : 'Bot'}: ${item.text}`)
+        .join('\n\n');
+}
+
+function exportConversation() {
+    const content = formatConversationForExport();
+    if (!content.trim()) {
+        showNotification('Aucune conversation à exporter.', 'error');
+        return;
+    }
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-devops-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function copyConversation() {
+    const content = formatConversationForExport();
+    if (!content.trim()) {
+        showNotification('Aucune conversation à copier.', 'error');
+        return;
+    }
+    await navigator.clipboard.writeText(content);
+    showNotification('Conversation copiée.', 'success');
+}
+
+function renderConversationHistoryList() {
+    const wrap = document.getElementById('conversationHistoryList');
+    if (!wrap) return;
+    const list = conversationRows.slice(0, 40);
+    if (list.length === 0) {
+        wrap.innerHTML = '<div class="history-item">Aucun historique disponible.</div>';
+        return;
+    }
+    wrap.innerHTML = '';
+    list.forEach((row) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        const preview = (row.user_message || row.bot_response || '').slice(0, 72);
+        const ts = new Date(row.created_at || Date.now()).toLocaleString();
+        item.textContent = `${ts} — ${preview}`;
+        item.addEventListener('click', () => {
+            if (row.user_message) {
+                messageInput.value = row.user_message;
+                messageInput.focus();
+            } else if (row.bot_response) {
+                navigator.clipboard.writeText(row.bot_response).then(() => {
+                    showNotification('Réponse copiée.', 'success');
+                });
+            }
+        });
+        wrap.appendChild(item);
+    });
+}
+
 // Gestion du clavier
 function handleKeyPress(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -243,6 +316,20 @@ function addMessage(text, sender, timestamp, sources = []) {
         });
         content.appendChild(sourceWrap);
     }
+    if (sender === 'bot') {
+        const actionWrap = document.createElement('div');
+        actionWrap.className = 'message-actions';
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'copy-output-btn';
+        copyBtn.textContent = 'Copier output';
+        copyBtn.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(text || '');
+            showNotification('Output copié.', 'success');
+        });
+        actionWrap.appendChild(copyBtn);
+        content.appendChild(actionWrap);
+    }
     
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(content);
@@ -258,6 +345,7 @@ function addMessage(text, sender, timestamp, sources = []) {
         messageDiv.style.opacity = '1';
         messageDiv.style.transform = 'translateY(0)';
     }, 10);
+    currentTranscript.push({ sender, text, timestamp });
 }
 
 // Formatage des messages (emojis, liens, etc.)
@@ -365,6 +453,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
     }
+    const exportBtn = document.getElementById('exportConversationBtn');
+    if (exportBtn) exportBtn.addEventListener('click', exportConversation);
+    const copyConversationBtn = document.getElementById('copyConversationBtn');
+    if (copyConversationBtn) copyConversationBtn.addEventListener('click', copyConversation);
     attachButton.addEventListener('click', () => attachmentInput.click());
     attachmentInput.addEventListener('change', async (event) => {
         const files = Array.from(event.target.files || []).slice(0, 4);

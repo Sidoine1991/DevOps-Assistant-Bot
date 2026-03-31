@@ -155,6 +155,25 @@ app.get('/api/knowledge/stats/:userId', async (req, res) => {
   }
 });
 
+app.get('/api/conversations/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const limit = Math.min(Number(req.query.limit || 100), 300);
+    if (!userId) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'userId requis' });
+    }
+    const conversations = await supabaseService.getConversations(userId, limit);
+    return res.status(200).json({
+      success: true,
+      userId,
+      count: conversations.length,
+      conversations,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
+});
+
 // Route pour valider les clés API
 app.post('/api/config/validate', (req, res) => {
   const { apiKey, provider } = req.body;

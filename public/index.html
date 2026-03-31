@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DevOps Assistant Bot</title>
+    <link rel="icon" type="image/png" href="media/Logo%20du%20bot%20DevOps%20Assistant.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -37,6 +38,10 @@
                 <div class="ai-badge warning" id="aiBadge" aria-live="polite">IA non configurée</div>
 
                 <div class="chat-input-container">
+                    <div class="conversation-tools">
+                        <button type="button" id="exportConversationBtn" class="tool-btn">Exporter conversation</button>
+                        <button type="button" id="copyConversationBtn" class="tool-btn">Copier conversation</button>
+                    </div>
                     <div class="quick-actions">
                         <button class="quick-action" onclick="sendQuickMessage('Comment déployer une application Node.js avec Docker ?')">
                             <i class="material-icons">rocket_launch</i>
@@ -141,6 +146,14 @@
                             <div class="metric-value">78%</div>
                         </div>
                     </div>
+                </div>
+
+                <div class="history-card">
+                    <h3>
+                        <i class="material-icons">history</i>
+                        Historique
+                    </h3>
+                    <div id="conversationHistoryList" class="history-list"></div>
                 </div>
             </aside>
         </main>
