@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 class AuthService {
   constructor(supabaseService) {
@@ -41,6 +42,75 @@ class AuthService {
 
   generateCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  hashPassword(password) {
+    return crypto.createHash('sha256').update(String(password || '')).digest('hex');
+  }
+
+  async registerWithPassword(email, password, fullName = '') {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const rawPassword = String(password || '');
+    if (!normalizedEmail || !rawPassword) {
+      return { success: false, code: 'VALIDATION_ERROR', message: 'Email et mot de passe requis.' };
+    }
+    if (rawPassword.length < 6) {
+      return { success: false, code: 'WEAK_PASSWORD', message: 'Le mot de passe doit contenir au moins 6 caractères.' };
+    }
+
+    const existing = await this.supabaseService.getUserByEmail(normalizedEmail);
+    if (existing) {
+      return { success: false, code: 'EMAIL_ALREADY_USED', message: 'Cet email est déjà utilisé.' };
+    }
+
+    const user = await this.supabaseService.createUserWithPassword({
+      email: normalizedEmail,
+      fullName,
+      passwordHash: this.hashPassword(rawPassword),
+    });
+    if (!user) {
+      return { success: false, code: 'REGISTER_FAILED', message: 'Impossible de créer le compte.' };
+    }
+
+    return {
+      success: true,
+      code: 'REGISTERED',
+      message: 'Compte créé avec succès.',
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.full_name || '',
+        isVerified: true,
+      },
+    };
+  }
+
+  async loginWithPassword(email, password) {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const rawPassword = String(password || '');
+    if (!normalizedEmail || !rawPassword) {
+      return { success: false, code: 'VALIDATION_ERROR', message: 'Email et mot de passe requis.' };
+    }
+    const user = await this.supabaseService.getUserByEmail(normalizedEmail);
+    if (!user || !user.password_hash) {
+      return { success: false, code: 'INVALID_CREDENTIALS', message: 'Identifiants invalides.' };
+    }
+    const valid = user.password_hash === this.hashPassword(rawPassword);
+    if (!valid) {
+      return { success: false, code: 'INVALID_CREDENTIALS', message: 'Identifiants invalides.' };
+    }
+
+    return {
+      success: true,
+      code: 'LOGGED_IN',
+      message: 'Connexion réussie.',
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.full_name || '',
+        isVerified: true,
+      },
+    };
   }
 
   async requestVerificationCode(email, fullName = '') {

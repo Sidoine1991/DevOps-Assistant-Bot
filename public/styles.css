@@ -43,6 +43,14 @@ body {
     font-weight: 600;
 }
 
+.app-logo {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    border-radius: 6px;
+    background: #fff;
+}
+
 .header h1 .material-icons {
     color: #667eea;
     font-size: 1.8rem;

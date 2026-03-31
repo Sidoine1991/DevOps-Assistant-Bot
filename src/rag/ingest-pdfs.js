@@ -3,10 +3,11 @@ const path = require('path');
 const { PDFParse } = require('pdf-parse');
 const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
+const { normalizeChromaClientPath } = require('./chroma-client-url');
 
 require('dotenv').config();
 
-const DATA_DIR = process.env.RAG_DATA_DIR || 'D:/Dev/Projet_fil/data_course';
+const DATA_DIR = process.env.RAG_DATA_DIR || path.join(process.cwd(), 'data_course');
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
 const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
 const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 1200);
@@ -86,7 +87,7 @@ async function main() {
   const chromaPath = getChromaPath();
   console.log('Endpoint Chroma:', chromaPath);
   const embeddingFunction = getEmbeddingFunction();
-  const client = new ChromaClient({ path: chromaPath });
+  const client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
 
   // Assurer la collection
   let collection;

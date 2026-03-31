@@ -231,6 +231,34 @@ function exportConversation() {
     URL.revokeObjectURL(url);
 }
 
+function exportConversationHtml() {
+    if (currentTranscript.length === 0) {
+        showNotification('Aucune conversation à exporter.', 'error');
+        return;
+    }
+    const rows = currentTranscript.map((item) => {
+        const who = item.sender === 'user' ? 'Vous' : 'Bot';
+        const date = new Date(item.timestamp || Date.now()).toLocaleString();
+        const safeText = String(item.text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>');
+        return `<div style="margin-bottom:12px;"><div style="font-weight:600">${who} - ${date}</div><div>${safeText}</div></div>`;
+    }).join('\n');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Conversation DevOps</title></head><body style="font-family:Arial,sans-serif;max-width:900px;margin:20px auto;padding:16px;"><h1>Export conversation DevOps Assistant</h1>${rows}</body></html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-devops-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
 async function copyConversation() {
     const content = formatConversationForExport();
     if (!content.trim()) {
@@ -359,7 +387,8 @@ function formatMessage(text) {
         .replace(/^## (.*)$/gm, '<h3>$1</h3>')
         .replace(/^# (.*)$/gm, '<h2>$1</h2>')
         .replace(/^- (.*)$/gm, '• $1')
-        .replace(/\n/g, '<br>');
+        .replace(/\n/g, '<br>')
+        .replace(/(\/generated\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 
     return formatted;
 }
@@ -455,6 +484,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const exportBtn = document.getElementById('exportConversationBtn');
     if (exportBtn) exportBtn.addEventListener('click', exportConversation);
+    const exportHtmlBtn = document.getElementById('exportConversationHtmlBtn');
+    if (exportHtmlBtn) exportHtmlBtn.addEventListener('click', exportConversationHtml);
     const copyConversationBtn = document.getElementById('copyConversationBtn');
     if (copyConversationBtn) copyConversationBtn.addEventListener('click', copyConversation);
     attachButton.addEventListener('click', () => attachmentInput.click());

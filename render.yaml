@@ -1,5 +1,14 @@
 services:
   - type: web
+    name: chromadb
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./deploy/chroma/Dockerfile
+    healthCheckPath: /api/v2/heartbeat
+    autoDeploy: true
+
+  - type: web
     name: devops-assistant-bot
     env: node
     plan: starter
@@ -27,9 +36,30 @@ services:
         value: "true"
       - key: RAG_COLLECTION
         value: devops_courses
-      - key: CHROMA_HOST
+      - key: CHROMA_URL
+        fromService:
+          name: chromadb
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CHROMA_FALLBACK_URL
         sync: false
-      - key: CHROMA_PORT
-        value: "8000"
-      - key: CHROMA_SSL
+      - key: RAG_RETRIEVAL_TOP_K
+        value: "16"
+      - key: RAG_MAX_CHUNKS_PER_DOC
+        value: "1200"
+      - key: RAG_INGEST_BATCH_SIZE
+        value: "4"
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_SECURE
         value: "false"

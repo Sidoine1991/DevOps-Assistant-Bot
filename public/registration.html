@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription - DevOps Assistant Bot</title>
-    <link rel="icon" type="image/png" href="media/Logo%20du%20bot%20DevOps%20Assistant.png">
+    <link rel="icon" type="image/png" href="/media/Logo%20du%20bot%20DevOps%20Assistant.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -18,6 +18,7 @@
             box-shadow: 0 16px 34px rgba(0,0,0,.15);
             padding: 1.25rem;
         }
+        .logo { width: 92px; height: 92px; object-fit: contain; display:block; margin: 0 auto .65rem; border-radius: 12px; background:#fff; }
         .auth-card h2 { margin-bottom: .35rem; color: #1f2937; }
         .auth-card p { margin-bottom: 1rem; color: #4b5563; font-size: .92rem; }
         .auth-card input {
@@ -46,14 +47,14 @@
 <body>
     <div class="auth-wrap">
         <div class="auth-card">
+            <img class="logo" src="/media/Logo%20du%20bot%20DevOps%20Assistant.png" alt="Logo DevOps Assistant Bot">
             <h2>Creer votre compte</h2>
-            <p>Entrez votre email, recevez un code, puis validez pour acceder au bot.</p>
+            <p>Créez votre compte avec nom, email et mot de passe.</p>
 
             <input id="fullName" type="text" placeholder="Nom complet">
             <input id="email" type="email" placeholder="email@exemple.com">
-            <button id="sendCode" class="btn-main">Recevoir un code</button>
-            <input id="code" type="text" placeholder="Code a 6 chiffres">
-            <button id="verifyCode" class="btn-alt">Verifier mon compte</button>
+            <input id="password" type="password" placeholder="Mot de passe (6 caractères min)">
+            <button id="registerBtn" class="btn-main">Créer mon compte</button>
             <div id="msg" class="msg"></div>
 
             <div class="links">
@@ -67,38 +68,19 @@
         const msg = document.getElementById('msg');
         const fullNameInput = document.getElementById('fullName');
         const emailInput = document.getElementById('email');
-        const codeInput = document.getElementById('code');
-
-        document.getElementById('sendCode').addEventListener('click', async () => {
+        const passwordInput = document.getElementById('password');
+        document.getElementById('registerBtn').addEventListener('click', async () => {
             const email = (emailInput.value || '').trim();
             const fullName = (fullNameInput.value || '').trim();
-            if (!email) {
-                msg.textContent = 'Veuillez saisir un email.';
+            const password = (passwordInput.value || '').trim();
+            if (!email || !password) {
+                msg.textContent = 'Email et mot de passe requis.';
                 return;
             }
-            const res = await fetch('/api/auth/request-code', {
+            const res = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, fullName })
-            });
-            const data = await res.json();
-            msg.textContent = data.message || 'Reponse serveur.';
-            if (data.debugCode) {
-                msg.textContent += ` (code test: ${data.debugCode})`;
-            }
-        });
-
-        document.getElementById('verifyCode').addEventListener('click', async () => {
-            const email = (emailInput.value || '').trim();
-            const code = (codeInput.value || '').trim();
-            if (!email || !code) {
-                msg.textContent = 'Email et code requis.';
-                return;
-            }
-            const res = await fetch('/api/auth/verify-code', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, code })
+                body: JSON.stringify({ email, password, fullName })
             });
             const data = await res.json();
             msg.textContent = data.message || 'Reponse serveur.';

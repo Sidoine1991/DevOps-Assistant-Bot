@@ -1,6 +1,7 @@
 const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const ChromaBackupManager = require('./chroma-backup-manager');
+const { normalizeChromaClientPath } = require('./chroma-client-url');
 
 class RetrievalService {
   constructor() {
@@ -64,7 +65,7 @@ class RetrievalService {
 
       for (const chromaPath of candidates) {
         try {
-          this.client = new ChromaClient({ path: chromaPath });
+          this.client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
           this.collection = await this.client.getCollection({
             name: this.collectionName,
             embeddingFunction: this.embeddingFunction,
@@ -83,7 +84,7 @@ class RetrievalService {
         if (restored) {
           for (const chromaPath of candidates) {
             try {
-              this.client = new ChromaClient({ path: chromaPath });
+              this.client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
               this.collection = await this.client.getCollection({
                 name: this.collectionName,
                 embeddingFunction: this.embeddingFunction,

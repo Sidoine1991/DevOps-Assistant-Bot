@@ -2,12 +2,18 @@ const OpenAI = require('openai');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const RetrievalService = require('./rag/retrieval-service');
 const { PDFParse } = require('pdf-parse');
+const fs = require('fs');
+const path = require('path');
 
 class AIService {
   constructor() {
     this.openai = null;
     this.gemini = null;
     this.retrievalService = new RetrievalService();
+    this.generatedImageDir = path.join(__dirname, '../public/generated');
+    if (!fs.existsSync(this.generatedImageDir)) {
+      fs.mkdirSync(this.generatedImageDir, { recursive: true });
+    }
     this.initializeProviders();
   }
 
@@ -56,6 +62,13 @@ class AIService {
     try {
       const provider = context.provider || 'openai';
       const normalizedQuestion = this.normalizeUserQuestion(message);
+      const attachments = Array.isArray(context.attachments) ? context.attachments : [];
+      const hasImageAttachment = attachments.some((a) => a?.type && String(a.type).startsWith('image/'));
+
+      if (this.isImageGenerationRequest(normalizedQuestion)) {
+        return await this.generateIllustrationResponse(normalizedQuestion);
+      }
+
       let systemPrompt = this.buildDevOps_prompt(context);
       let ragChunks = [];
       let ragSources = [];
@@ -102,15 +115,21 @@ class AIService {
 
       // Utiliser le provider spécifié ou OpenAI par défaut
       if (provider === 'gemini' && this.gemini) {
-        return await this.getGeminiResponse(message, systemPrompt, context.attachments || []);
+        return await this.getGeminiResponse(message, systemPrompt, attachments);
       } else if (provider === 'openai' && this.openai) {
+        if (hasImageAttachment && this.gemini) {
+          return await this.getGeminiResponse(message, systemPrompt, attachments);
+        }
+        if (hasImageAttachment && !this.gemini) {
+          return 'Je ne peux pas analyser cette image avec la configuration actuelle. Activez Gemini (vision) ou reformulez sans image.';
+        }
         return await this.getOpenAIResponse(message, systemPrompt);
       } else if (this.openai) {
         // Fallback à OpenAI si le provider spécifié n'est pas disponible
         return await this.getOpenAIResponse(message, systemPrompt);
       } else if (this.gemini) {
         // Fallback à Gemini si OpenAI n'est pas disponible
-        return await this.getGeminiResponse(message, systemPrompt, context.attachments || []);
+        return await this.getGeminiResponse(message, systemPrompt, attachments);
       } else {
         console.log('Aucun provider IA disponible, utilisation du fallback');
         return ragChunks.length > 0
@@ -209,6 +228,35 @@ class AIService {
     const response = await result.response;
     
     return response.text();
+  }
+
+  isImageGenerationRequest(message = '') {
+    const lower = message.toLowerCase();
+    return /(genere|génère|cree|crée|illustr|dessin|image)/.test(lower) && /(image|illustration|visuel|schema|schéma)/.test(lower);
+  }
+
+  async generateIllustrationResponse(message) {
+    if (!this.openai) {
+      return "Je ne peux pas générer d'image pour le moment (OPENAI_API_KEY manquante). Reformulez en texte ou activez OpenAI.";
+    }
+    try {
+      const prompt = `Crée une illustration pédagogique DevOps, style clair, moderne, lisible. Demande utilisateur: ${message}`;
+      const result = await this.openai.images.generate({
+        model: 'gpt-image-1',
+        prompt,
+        size: '1024x1024'
+      });
+      const b64 = result?.data?.[0]?.b64_json;
+      if (!b64) {
+        return "Je n'ai pas pu générer l'illustration cette fois. Réessayez avec une description plus précise.";
+      }
+      const fileName = `illustration-${Date.now()}.png`;
+      const filePath = path.join(this.generatedImageDir, fileName);
+      fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+      return `Illustration générée avec succès.\nOuvrir: /generated/${fileName}`;
+    } catch (error) {
+      return `Je n'ai pas pu générer l'image: ${error.message}`;
+    }
   }
 
   appendSources(answer, externalSources = []) {
@@ -481,7 +529,7 @@ Réponds toujours en français et de manière helpful.`;
       return 'Pour l\'optimisation, je peux analyser les performances de votre application. Quels aspects souhaitez-vous améliorer ?';
     }
 
-    return 'Je suis votre assistant DevOps ! Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation. Comment puis-je vous aider ?';
+    return "Je ne connais pas encore une réponse fiable à cette question. Reformulez avec plus de contexte (outil, erreur, objectif) et je vous aiderai.";
   }
 
   async analyzeSystemMetrics(metrics) {

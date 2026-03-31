@@ -404,6 +404,59 @@ class SupabaseService {
       return null;
     }
   }
+
+  async getUserByEmail(email) {
+    if (!this.client || !email) return null;
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } catch (error) {
+      console.error('Erreur getUserByEmail:', error);
+      return null;
+    }
+  }
+
+  async createUserWithPassword({ email, fullName = '', passwordHash }) {
+    if (!this.client || !email || !passwordHash) return null;
+    try {
+      // Insert minimal pour rester compatible même si "full_name" n'existe
+      // pas encore dans le cache de schéma PostgREST.
+      const payload = {
+        email,
+        password_hash: passwordHash,
+        is_verified: true,
+        verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await this.client
+        .from('users')
+        .insert([payload])
+        .select('*')
+        .single();
+      if (error) throw error;
+
+      // Mise à jour best-effort du nom complet si la colonne existe.
+      if (fullName && String(fullName).trim()) {
+        try {
+          await this.client
+            .from('users')
+            .update({ full_name: String(fullName).trim(), updated_at: new Date().toISOString() })
+            .eq('id', data.id);
+        } catch (nameErr) {
+          // Ignorer silencieusement les erreurs de schéma sur full_name.
+        }
+      }
+      return data;
+    } catch (error) {
+      console.error('Erreur createUserWithPassword:', error);
+      return null;
+    }
+  }
 }
 
 module.exports = SupabaseService;

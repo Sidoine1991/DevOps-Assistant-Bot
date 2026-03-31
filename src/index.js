@@ -14,19 +14,31 @@ const AuthService = require('./auth-service');
 
 const app = express();
 const server = http.createServer(app);
+
+const originsRaw = process.env.FRONTEND_ORIGINS;
+const corsOrigins = originsRaw
+  ? originsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+  : null;
+const corsOptions = {
+  origin: corsOrigins && corsOrigins.length ? corsOrigins : true,
+  credentials: true,
+};
+
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: corsOrigins && corsOrigins.length ? corsOrigins : true,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 });
 
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Servir les fichiers statiques
 app.use(express.static('public'));
+app.use('/media', express.static(path.join(__dirname, '../media')));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/login.html'));
@@ -97,6 +109,26 @@ app.post('/api/auth/request-code', async (req, res) => {
       code: 'SERVER_ERROR',
       message: error.message,
     });
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body || {};
+    const result = await authService.registerWithPassword(email, password, fullName);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const result = await authService.loginWithPassword(email, password);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
   }
 });
 
@@ -348,9 +380,9 @@ io.on('connection', (socket) => {
     
     try {
       const user = await supabaseService.getUserById(userId);
-      if (!user || !user.is_verified) {
+      if (!user) {
         socket.emit('response', {
-          message: 'Votre compte doit être vérifié par code email avant d’utiliser le bot.',
+          message: 'Votre session est invalide. Connectez-vous de nouveau.',
           timestamp: new Date().toISOString(),
           bot: 'DevOps Assistant Auth',
           sources: []
