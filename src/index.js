@@ -132,6 +132,27 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    const result = await authService.requestPasswordReset(email);
+    const status = result.success ? 200 : result.code === 'CODE_SAVE_FAILED' ? 503 : 400;
+    return res.status(status).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body || {};
+    const result = await authService.resetPasswordWithCode(email, code, newPassword);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
+  }
+});
+
 app.get('/api/auth/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;

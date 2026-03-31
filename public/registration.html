@@ -52,15 +52,17 @@
             <h2>Creer votre compte</h2>
             <p>Créez votre compte avec nom, email et mot de passe.</p>
 
-            <input id="fullName" type="text" placeholder="Nom complet">
-            <input id="email" type="email" placeholder="email@exemple.com">
-            <input id="password" type="password" placeholder="Mot de passe (6 caractères min)">
-            <button id="registerBtn" class="btn-main">Créer mon compte</button>
+            <input id="fullName" type="text" placeholder="Nom complet" autocomplete="name">
+            <input id="email" type="email" placeholder="email@exemple.com" autocomplete="email">
+            <input id="password" type="password" placeholder="Mot de passe (6 caractères min)" autocomplete="new-password" minlength="6">
+            <p style="font-size:.78rem;color:#6b7280;margin:-.35rem 0 .5rem;">Au moins 6 caractères. En cas d’oubli après inscription : <a href="/forgot-password.html">réinitialiser le mot de passe</a>.</p>
+            <button type="button" id="registerBtn" class="btn-main">Créer mon compte</button>
             <div id="msg" class="msg"></div>
 
             <div class="links">
                 <a href="/home.html">Retour accueil</a>
                 <a href="/login.html">Se connecter</a>
+                <a href="/forgot-password.html">Mot de passe oublié</a>
             </div>
         </div>
     </div>
@@ -72,12 +74,16 @@
         const fullNameInput = document.getElementById('fullName');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
-        document.getElementById('registerBtn').addEventListener('click', async () => {
+        async function doRegister() {
             const email = (emailInput.value || '').trim();
             const fullName = (fullNameInput.value || '').trim();
             const password = (passwordInput.value || '').trim();
             if (!email || !password) {
                 msg.textContent = 'Email et mot de passe requis.';
+                return;
+            }
+            if (password.length < 6) {
+                msg.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
                 return;
             }
             const res = await fetch(window.apiUrl('/api/auth/register'), {
@@ -93,6 +99,10 @@
                 localStorage.setItem('devops-user-name', data.user.fullName || fullNameInput.value || '');
                 window.location.href = '/index.html';
             }
+        }
+        document.getElementById('registerBtn').addEventListener('click', doRegister);
+        [fullNameInput, emailInput, passwordInput].forEach((el) => {
+            el.addEventListener('keydown', (e) => { if (e.key === 'Enter') doRegister(); });
         });
     </script>
 </body>

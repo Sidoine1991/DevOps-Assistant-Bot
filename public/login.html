@@ -39,9 +39,10 @@
             <p>Entrez votre email et mot de passe pour vous connecter.</p>
 
             <input id="email" type="email" placeholder="email@exemple.com">
-            <input id="password" type="password" placeholder="Mot de passe">
-            <button id="loginBtn" class="btn-main">Se connecter</button>
+            <input id="password" type="password" placeholder="Mot de passe" autocomplete="current-password">
+            <button type="button" id="loginBtn" class="btn-main">Se connecter</button>
             <div id="msg" class="msg"></div>
+            <p style="text-align:center;margin:.4rem 0 0;font-size:.86rem;"><a href="/forgot-password.html">Mot de passe oublié ?</a></p>
 
             <div class="links">
                 <a href="/home.html">Retour accueil</a>
@@ -56,7 +57,7 @@
         const msg = document.getElementById('msg');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
-        document.getElementById('loginBtn').addEventListener('click', async () => {
+        async function doLogin() {
             const email = (emailInput.value || '').trim();
             const password = (passwordInput.value || '').trim();
             if (!email || !password) {
@@ -76,6 +77,13 @@
                 localStorage.setItem('devops-user-name', data.user.fullName || '');
                 window.location.href = '/index.html';
             }
+        }
+        document.getElementById('loginBtn').addEventListener('click', doLogin);
+        document.getElementById('password').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+        document.getElementById('email').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doLogin();
         });
     </script>
 </body>

@@ -43,4 +43,24 @@ describe('API Tests', () => {
       expect(response.text).toContain('DevOps Assistant Bot');
     });
   });
+
+  describe('POST /api/auth/forgot-password', () => {
+    it('should reject empty body', async () => {
+      const response = await request(app)
+        .post('/api/auth/forgot-password')
+        .send({})
+        .expect(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/auth/reset-password', () => {
+    it('should reject missing fields', async () => {
+      const response = await request(app)
+        .post('/api/auth/reset-password')
+        .send({ email: 'a@b.com' })
+        .expect(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
 });

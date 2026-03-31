@@ -90,7 +90,38 @@ socket.on('disconnect', () => {
     updateStatus('offline');
 });
 
+function removeTypingIndicator() {
+    const el = document.getElementById('chatTypingIndicator');
+    if (el) el.remove();
+}
+
+function showTypingIndicator() {
+    removeTypingIndicator();
+    if (!chatMessages) return;
+    const messageDiv = document.createElement('div');
+    messageDiv.id = 'chatTypingIndicator';
+    messageDiv.className = 'message bot-message typing-indicator-wrap';
+    messageDiv.setAttribute('aria-live', 'polite');
+    messageDiv.setAttribute('aria-label', 'Le bot rédige une réponse');
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.innerHTML = '<i class="material-icons">smart_toy</i>';
+    const content = document.createElement('div');
+    content.className = 'message-content typing-indicator-content';
+    content.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function finishAssistantReply() {
+    removeTypingIndicator();
+    setInputState(false);
+}
+
 socket.on('response', (data) => {
+    finishAssistantReply();
     addMessage(data.message, 'bot', data.timestamp, data.sources || []);
     conversationRows.unshift({
         id: `live-${Date.now()}`,
@@ -128,22 +159,24 @@ async function sendMessage() {
         lastSentMessage = message;
         addMessage(message, 'user', new Date().toISOString());
         setInputState(true);
-        
-        // Envoyer le message ; le serveur récupère la clé complète côté backend.
-        // En fallback local (sans Supabase), on transmet la config locale.
-        loadUserConfig().then(userConfig => {
-            socket.emit('message', {
-                message: message,
-                userId: userId,
-                userConfigLocal: userConfig && userConfig.source === 'local'
-                    ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
-                    : null,
-                attachments: pendingAttachments
+        showTypingIndicator();
+
+        loadUserConfig()
+            .then((userConfig) => {
+                socket.emit('message', {
+                    message: message,
+                    userId: userId,
+                    userConfigLocal: userConfig && userConfig.source === 'local'
+                        ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
+                        : null,
+                    attachments: pendingAttachments
+                });
+            })
+            .catch(() => {
+                finishAssistantReply();
+                showNotification('Impossible de charger la configuration.', 'error');
             });
-        }).finally(() => {
-            setInputState(false);
-        });
-        
+
         messageInput.value = '';
         pendingAttachments = [];
         attachmentPreview.textContent = '';
@@ -556,6 +589,7 @@ if (document.readyState === 'loading') {
 // Gestion des erreurs
 socket.on('connect_error', (error) => {
     console.error('Erreur de connexion:', error);
+    finishAssistantReply();
     addMessage('❌ Impossible de se connecter au serveur. Vérifiez votre connexion.', 'bot', new Date().toISOString());
 });
 

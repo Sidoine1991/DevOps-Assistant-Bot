@@ -136,6 +136,7 @@ class AuthService {
       email: normalizedEmail,
       code: verificationCode,
       expiresAt,
+      purpose: 'verify',
     });
     if (!saved) {
       return { success: false, code: 'CODE_SAVE_FAILED', message: 'Impossible de générer le code de vérification.' };
@@ -174,7 +175,7 @@ class AuthService {
       return { success: false, code: 'VALIDATION_ERROR', message: 'Email et code requis.' };
     }
 
-    const verification = await this.supabaseService.getLatestVerificationCode(normalizedEmail);
+    const verification = await this.supabaseService.getLatestVerificationCode(normalizedEmail, 'verify');
     if (!verification) {
       return { success: false, code: 'CODE_NOT_FOUND', message: 'Aucun code trouvé pour cet email.' };
     }
@@ -208,6 +209,107 @@ class AuthService {
         fullName: user.full_name || '',
         isVerified: user.is_verified,
       },
+    };
+  }
+
+  async requestPasswordReset(email) {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      return { success: false, code: 'VALIDATION_ERROR', message: 'Email requis.' };
+    }
+
+    const user = await this.supabaseService.getUserByEmail(normalizedEmail);
+    const genericOk = {
+      success: true,
+      code: 'RESET_EMAIL_SENT',
+      message: 'Si cet email est associé à un compte avec mot de passe, un code de réinitialisation vient d’être envoyé.',
+    };
+
+    if (!user || !user.password_hash) {
+      return genericOk;
+    }
+
+    const resetCode = this.generateCode();
+    const expiresAt = new Date(Date.now() + this.codeTtlMinutes * 60 * 1000).toISOString();
+    const saved = await this.supabaseService.saveVerificationCode({
+      userId: user.id,
+      email: normalizedEmail,
+      code: resetCode,
+      expiresAt,
+      purpose: 'password_reset',
+    });
+    if (!saved) {
+      return { success: false, code: 'CODE_SAVE_FAILED', message: 'Impossible de générer le code. Réessayez plus tard.' };
+    }
+
+    const transporter = this.buildTransporter();
+    if (!transporter) {
+      return {
+        ...genericOk,
+        code: 'SMTP_NOT_CONFIGURED',
+        message: `${genericOk.message} (SMTP non configuré : voir le code ci-dessous en développement.)`,
+        debugCode: resetCode,
+      };
+    }
+
+    await transporter.sendMail({
+      from: `"DevOps Assistant Bot" <${this.adminEmail}>`,
+      to: normalizedEmail,
+      subject: 'Réinitialisation du mot de passe — DevOps Assistant Bot',
+      text:
+        `Bonjour,\n\nVotre code de réinitialisation est : ${resetCode}\n` +
+        `Il expire dans ${this.codeTtlMinutes} minutes.\n\n` +
+        'Si vous n’avez pas demandé cette réinitialisation, ignorez ce message.\n\n— DevOps Assistant Bot',
+    });
+
+    return genericOk;
+  }
+
+  async resetPasswordWithCode(email, submittedCode, newPassword) {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const code = (submittedCode || '').trim();
+    const rawPassword = String(newPassword || '');
+    if (!normalizedEmail || !code || !rawPassword) {
+      return { success: false, code: 'VALIDATION_ERROR', message: 'Email, code et nouveau mot de passe requis.' };
+    }
+    if (rawPassword.length < 6) {
+      return { success: false, code: 'WEAK_PASSWORD', message: 'Le mot de passe doit contenir au moins 6 caractères.' };
+    }
+
+    const verification = await this.supabaseService.getLatestVerificationCode(
+      normalizedEmail,
+      'password_reset'
+    );
+    if (!verification) {
+      return { success: false, code: 'CODE_NOT_FOUND', message: 'Aucun code valide pour cet email. Demandez un nouveau code.' };
+    }
+    if (verification.used_at) {
+      return { success: false, code: 'CODE_ALREADY_USED', message: 'Ce code a déjà été utilisé.' };
+    }
+    if (new Date(verification.expires_at).getTime() < Date.now()) {
+      return { success: false, code: 'CODE_EXPIRED', message: 'Le code a expiré. Demandez-en un nouveau.' };
+    }
+    if (verification.code !== code) {
+      return { success: false, code: 'CODE_INVALID', message: 'Code incorrect.' };
+    }
+
+    const markedUsed = await this.supabaseService.markVerificationCodeUsed(verification.id);
+    if (!markedUsed) {
+      return { success: false, code: 'CODE_UPDATE_FAILED', message: 'Impossible de valider ce code.' };
+    }
+
+    const updated = await this.supabaseService.updateUserPasswordHashByEmail(
+      normalizedEmail,
+      this.hashPassword(rawPassword)
+    );
+    if (!updated) {
+      return { success: false, code: 'PASSWORD_UPDATE_FAILED', message: 'Impossible de mettre à jour le mot de passe.' };
+    }
+
+    return {
+      success: true,
+      code: 'PASSWORD_RESET_OK',
+      message: 'Mot de passe mis à jour. Vous pouvez vous connecter.',
     };
   }
 }

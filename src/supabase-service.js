@@ -321,18 +321,18 @@ class SupabaseService {
     }
   }
 
-  async saveVerificationCode({ userId, email, code, expiresAt }) {
+  async saveVerificationCode({ userId, email, code, expiresAt, purpose = 'verify' }) {
     if (!this.client) return false;
     try {
-      const { error } = await this.client
-        .from('auth_verification_codes')
-        .insert([{
-          user_id: userId,
-          email,
-          code,
-          expires_at: expiresAt,
-          created_at: new Date().toISOString(),
-        }]);
+      const row = {
+        user_id: userId,
+        email,
+        code,
+        expires_at: expiresAt,
+        created_at: new Date().toISOString(),
+        purpose,
+      };
+      const { error } = await this.client.from('auth_verification_codes').insert([row]);
       return !error;
     } catch (error) {
       console.error('Erreur saveVerificationCode:', error);
@@ -340,13 +340,14 @@ class SupabaseService {
     }
   }
 
-  async getLatestVerificationCode(email) {
+  async getLatestVerificationCode(email, purpose = 'verify') {
     if (!this.client || !email) return null;
     try {
-      const { data, error } = await this.client
-        .from('auth_verification_codes')
-        .select('*')
-        .eq('email', email)
+      let q = this.client.from('auth_verification_codes').select('*').eq('email', email);
+      if (purpose) {
+        q = q.eq('purpose', purpose);
+      }
+      const { data, error } = await q
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -418,6 +419,23 @@ class SupabaseService {
     } catch (error) {
       console.error('Erreur getUserByEmail:', error);
       return null;
+    }
+  }
+
+  async updateUserPasswordHashByEmail(email, passwordHash) {
+    if (!this.client || !email || !passwordHash) return false;
+    try {
+      const { error } = await this.client
+        .from('users')
+        .update({
+          password_hash: passwordHash,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('email', email);
+      return !error;
+    } catch (error) {
+      console.error('Erreur updateUserPasswordHashByEmail:', error);
+      return false;
     }
   }
 
