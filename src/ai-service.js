@@ -315,7 +315,8 @@ class AIService {
       const sentences = cleaned
         .split(/(?<=[.!?])\s+/)
         .map((s) => s.trim())
-        .filter((s) => s.length >= 40 && s.length <= 260);
+        .filter((s) => s.length >= 50 && s.length <= 240)
+        .filter((s) => this.isSentenceUsable(s));
 
       for (const sentence of sentences) {
         const tokens = new Set(this.tokenize(sentence));
@@ -340,6 +341,30 @@ class AIService {
       if (dedup.length >= limit) break;
     }
     return dedup;
+  }
+
+  isSentenceUsable(sentence) {
+    const text = String(sentence || '').trim();
+    if (!text) return false;
+
+    // Écarte les extraits de table des matières, références brutes, et lignes fragmentées.
+    if (/^\d+[:.)-]/.test(text)) return false;
+    if (/(copyright|all rights reserved|isbn|table of contents)/i.test(text)) return false;
+    if (/[|]{2,}/.test(text)) return false;
+
+    const letters = (text.match(/[a-zA-ZÀ-ÿ]/g) || []).length;
+    const digits = (text.match(/\d/g) || []).length;
+    const alphaRatio = letters / Math.max(1, text.length);
+    const digitRatio = digits / Math.max(1, text.length);
+
+    if (alphaRatio < 0.55) return false;
+    if (digitRatio > 0.18) return false;
+
+    // Une phrase utile doit contenir au moins un verbe/fréquence de langage.
+    if (!/(est|sont|permet|utilise|automati|deploi|livraison|monitor|pipeline|collaboration|culture|tests?)/i.test(text)) {
+      return false;
+    }
+    return true;
   }
 
   buildIntentAnswer(intent, message) {

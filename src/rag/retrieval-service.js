@@ -12,6 +12,8 @@ class RetrievalService {
     this.chromaUrl = process.env.CHROMA_URL || '';
     this.chromaFallbackUrl = process.env.CHROMA_FALLBACK_URL || '';
     this.defaultTopK = Number(process.env.RAG_RETRIEVAL_TOP_K || 16);
+    this.minSourceDiversity = Number(process.env.RAG_MIN_SOURCE_DIVERSITY || 3);
+    this.maxChunksPerSource = Number(process.env.RAG_MAX_CHUNKS_PER_SOURCE || 4);
     this.client = null;
     this.collection = null;
     this.gemini = null;
@@ -120,15 +122,71 @@ class RetrievalService {
     if (!this.enabled || !this.collection) return [];
 
     try {
-      const results = await this.collection.query({ queryTexts: [query], nResults: topK });
+      const overFetch = Math.max(topK * 3, topK + 8);
+      const results = await this.collection.query({ queryTexts: [query], nResults: overFetch });
 
       const documents = results.documents?.[0] || [];
       const metadatas = results.metadatas?.[0] || [];
+      const distances = results.distances?.[0] || [];
 
-      return documents.map((doc, idx) => ({
+      const flat = documents.map((doc, idx) => ({
         content: doc,
         metadata: metadatas[idx] || {},
+        distance: typeof distances[idx] === 'number' ? distances[idx] : Number.MAX_SAFE_INTEGER,
       }));
+
+      if (flat.length === 0) return [];
+
+      // Diversifie les sources pour éviter qu'un seul PDF domine toute la réponse.
+      const grouped = new Map();
+      for (const chunk of flat) {
+        const source = chunk?.metadata?.source || 'cours';
+        if (!grouped.has(source)) grouped.set(source, []);
+        grouped.get(source).push(chunk);
+      }
+
+      for (const items of grouped.values()) {
+        items.sort((a, b) => a.distance - b.distance);
+      }
+
+      const sourcesOrdered = [...grouped.entries()]
+        .sort((a, b) => a[1][0].distance - b[1][0].distance)
+        .map(([source]) => source);
+
+      const selected = [];
+      const counters = new Map();
+      let passes = 0;
+      while (selected.length < topK && passes < overFetch) {
+        let advanced = false;
+        for (const source of sourcesOrdered) {
+          const sourceChunks = grouped.get(source) || [];
+          const used = counters.get(source) || 0;
+          if (used >= sourceChunks.length) continue;
+          if (used >= this.maxChunksPerSource) continue;
+          selected.push(sourceChunks[used]);
+          counters.set(source, used + 1);
+          advanced = true;
+          if (selected.length >= topK) break;
+        }
+        if (!advanced) break;
+        passes += 1;
+      }
+
+      if (selected.length < topK) {
+        const already = new Set(selected.map((item) => `${item.metadata?.source || 'cours'}:${item.metadata?.index ?? ''}:${item.distance}`));
+        for (const item of flat.sort((a, b) => a.distance - b.distance)) {
+          const key = `${item.metadata?.source || 'cours'}:${item.metadata?.index ?? ''}:${item.distance}`;
+          if (already.has(key)) continue;
+          selected.push(item);
+          if (selected.length >= topK) break;
+        }
+      }
+
+      const uniqueSources = new Set(selected.map((c) => c?.metadata?.source || 'cours'));
+      if (uniqueSources.size < this.minSourceDiversity) {
+        console.warn(`RAG: diversité faible (${uniqueSources.size} source(s)) pour "${query}"`);
+      }
+      return selected.slice(0, topK).map(({ content, metadata }) => ({ content, metadata }));
     } catch (error) {
       console.error('Erreur RAG lors de la récupération des chunks:', error);
       return [];
