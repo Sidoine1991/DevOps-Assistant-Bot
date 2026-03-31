@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration IA - DevOps Assistant Bot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .config-container {
+            max-width: 720px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        .config-subtitle {
+            font-size: 0.95rem;
+            color: #616161;
+            margin-top: 0.25rem;
+        }
+        
+        .config-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .config-header h1 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .config-header p {
+            color: #666;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .provider-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .provider-card {
+            padding: 1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        
+        .provider-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+        
+        .provider-card.selected {
+            border-color: #667eea;
+            background: #f8f9ff;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        
+        .provider-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        
+        .provider-card p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .api-key-input {
+            position: relative;
+        }
+        
+        .toggle-visibility {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+        }
+        
+        .validation-message {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .validation-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .validation-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .config-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 1rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            min-height: 50px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #666;
+            border: 2px solid #e9ecef;
+        }
+        
+        .btn-secondary:hover {
+            background: #e9ecef;
+            color: #333;
+        }
+        
+        .current-config {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .current-config h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .current-config p {
+            color: #666;
+            font-family: monospace;
+            background: white;
+            padding: 0.5rem;
+            border-radius: 5px;
+        }
+        
+        .help-text {
+            margin-top: 0.5rem;
+            color: #666;
+            font-size: 0.82rem;
+        }
+        .status-banner {
+            background: #f5f7ff;
+            border: 1px solid #dce3ff;
+            color: #3949ab;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 0.88rem;
+            margin-bottom: 1rem;
+        }
+        
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 2rem;
+        }
+        
+        .back-link:hover {
+            color: #764ba2;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @media (max-width: 768px) {
+            .config-container {
+                margin: 1rem;
+                padding: 1.25rem;
+            }
+            .provider-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="config-container">
+        <a href="/" class="back-link">
+            <i class="material-icons">arrow_back</i>
+            Retour au chatbot
+        </a>
+        
+        <div class="config-header">
+            <h1>
+                <i class="material-icons">settings</i>
+                Configuration IA
+            </h1>
+            <p class="config-subtitle">Configurez votre clé API pour activer les réponses intelligentes</p>
+        </div>
+        <div class="status-banner" id="statusBanner">Sélectionnez un fournisseur, collez votre clé API, puis cliquez sur Sauvegarder.</div>
+        
+        <div id="currentConfig" class="current-config" style="display: none;">
+            <h3>Configuration actuelle</h3>
+            <p id="maskedKey"></p>
+            <p id="providerInfo"></p>
+        </div>
+        
+        <form id="configForm">
+            <div class="form-group">
+                <label>Fournisseur IA</label>
+                <div class="provider-cards">
+                    <div class="provider-card" data-provider="openai">
+                        <h3>
+                            <i class="material-icons">psychology</i>
+                            OpenAI GPT
+                        </h3>
+                        <p>GPT-3.5-turbo, réponses rapides et précises pour le DevOps. Clé: "sk-xxxxx" (51 caractères)</p>
+                    </div>
+                    <div class="provider-card" data-provider="gemini">
+                        <h3>
+                            <i class="material-icons">auto_awesome</i>
+                            Google Gemini
+                        </h3>
+                        <p>Modèle Gemini Pro de Google, alternative puissante à OpenAI. Clé: 39 caractères alphanumériques</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="apiKey">Clé API</label>
+                <div class="api-key-input">
+                    <input 
+                        type="password" 
+                        id="apiKey" 
+                        placeholder="Entrez votre clé API"
+                        required
+                    >
+                    <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility()">
+                        <i class="material-icons">visibility</i>
+                    </button>
+                </div>
+                <div class="help-text">
+                    OpenAI: commence par "sk-" • Gemini: clé Google (formats récents acceptés)
+                </div>
+                <div id="validationMessage"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="userId">ID Utilisateur</label>
+                <input 
+                    type="text" 
+                    id="userId" 
+                    placeholder="Entrez votre ID utilisateur unique"
+                    required
+                >
+                <div class="help-text">
+                    Identifiant unique pour sauvegarder votre configuration dans Supabase
+                </div>
+            </div>
+            
+            <div class="config-actions">
+                <button type="button" class="btn btn-secondary" onclick="clearConfig()">
+                    <i class="material-icons">clear</i>
+                    Effacer
+                </button>
+                <button type="submit" class="btn btn-primary" id="saveButton">
+                    <i class="material-icons">save</i>
+                    Sauvegarder
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Service client pour un fallback localStorage quand Supabase n'est pas disponible -->
+    <script src="config-client.js"></script>
+    <script>
+        let selectedProvider = 'openai';
+        const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
+        
+        // Sélection du fournisseur
+        document.querySelectorAll('.provider-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedProvider = card.dataset.provider;
+            });
+        });
+
+        // Toggle visibilité du mot de passe
+        function togglePasswordVisibility() {
+            const input = document.getElementById('apiKey');
+            const icon = document.querySelector('.toggle-visibility i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = 'visibility_off';
+            } else {
+                input.type = 'password';
+                icon.textContent = 'visibility';
+            }
+        }
+
+        // Validation de la clé API
+        async function validateApiKey(apiKey, provider) {
+            try {
+                const response = await fetch('/api/config/validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ apiKey, provider })
+                });
+
+                const result = await response.json();
+                return result;
+            } catch (error) {
+                return { isValid: false, message: 'Erreur de validation' };
+            }
+        }
+
+        // Afficher le message de validation
+        function showValidationMessage(message, isSuccess) {
+            const messageDiv = document.getElementById('validationMessage');
+            messageDiv.className = `validation-message ${isSuccess ? 'success' : 'error'}`;
+            messageDiv.textContent = message;
+            document.getElementById('statusBanner').textContent = message;
+            
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 3000);
+        }
+
+        // Soumission du formulaire
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            const saveButton = document.getElementById('saveButton');
+            
+            if (!apiKey || !userId) {
+                showValidationMessage('Veuillez entrer une clé API et un ID utilisateur', false);
+                return;
+            }
+
+            // Désactiver le bouton et afficher le chargement
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<div class="loading"></div> Sauvegarde en cours...';
+
+            // Validation
+            const validation = await validateApiKey(apiKey, selectedProvider);
+            if (!validation.isValid) {
+                showValidationMessage(validation.message, false);
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
+                return;
+            }
+
+            // Sauvegarde dans Supabase
+            try {
+                const response = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ apiKey, provider: selectedProvider, userId })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Sauvegarder aussi l'ID utilisateur côté client pour le confort
+                    localStorage.setItem('devops-user-id', userId);
+                    showValidationMessage('Configuration sauvegardée avec succès dans Supabase !', true);
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    // Si Supabase est en erreur, fallback localStorage
+                    if ((result.code === 'SUPABASE_NOT_READY' || result.code === 'SUPABASE_SAVE_FAILED') && clientConfigService) {
+                        const savedLocally = await clientConfigService.saveConfig(apiKey, selectedProvider);
+                        if (savedLocally) {
+                            localStorage.setItem('devops-user-id', userId);
+                            showValidationMessage('Supabase indisponible ou refus de sauvegarde : configuration sauvegardée localement sur cet appareil.', true);
+                        } else {
+                            showValidationMessage('Supabase indisponible et échec de la sauvegarde locale.', false);
+                        }
+                    } else {
+                        showValidationMessage('Erreur lors de la sauvegarde: ' + result.message, false);
+                    }
+                }
+                } catch (error) {
+                    if (clientConfigService) {
+                        const savedLocally = await clientConfigService.saveConfig(apiKey, selectedProvider);
+                        if (savedLocally) {
+                            localStorage.setItem('devops-user-id', userId);
+                            showValidationMessage('Serveur indisponible : configuration sauvegardée dans IndexedDB (local).', true);
+                        } else {
+                            showValidationMessage('Erreur de connexion au serveur', false);
+                        }
+                    } else {
+                        showValidationMessage('Erreur de connexion au serveur', false);
+                    }
+            } finally {
+                // Réactiver le bouton
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
+            }
+        });
+
+        // Effacer la configuration
+        async function clearConfig() {
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (!userId) {
+                showValidationMessage('Veuillez entrer un ID utilisateur', false);
+                return;
+            }
+            
+            if (confirm('Êtes-vous sûr de vouloir effacer votre configuration ?')) {
+                try {
+                    const response = await fetch(`/api/config/${userId}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        document.getElementById('currentConfig').style.display = 'none';
+                        document.getElementById('apiKey').value = '';
+                        showValidationMessage('Configuration effacée avec succès', true);
+                    } else {
+                        if ((result.code === 'SUPABASE_NOT_READY' || result.code === 'SUPABASE_SAVE_FAILED') && clientConfigService) {
+                            await clientConfigService.clearConfig();
+                            document.getElementById('currentConfig').style.display = 'none';
+                            document.getElementById('apiKey').value = '';
+                            showValidationMessage('Supabase indisponible : configuration locale effacée (IndexedDB).', true);
+                        } else {
+                            showValidationMessage('Erreur lors de la suppression', false);
+                        }
+                    }
+                } catch (error) {
+                    if (clientConfigService) {
+                        await clientConfigService.clearConfig();
+                        document.getElementById('currentConfig').style.display = 'none';
+                        document.getElementById('apiKey').value = '';
+                        showValidationMessage('Serveur indisponible : configuration locale effacée (IndexedDB).', true);
+                    } else {
+                        showValidationMessage('Erreur de connexion au serveur', false);
+                    }
+                }
+            }
+        }
+
+        // Charger la configuration existante
+        async function loadExistingConfig() {
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (userId) {
+                try {
+                    const response = await fetch(`/api/config/load/${userId}`);
+                    const result = await response.json();
+                    
+                    if (result.success && result.config) {
+                        const config = result.config;
+                        document.getElementById('currentConfig').style.display = 'block';
+                        document.getElementById('maskedKey').textContent = config.apiKey;
+                        document.getElementById('providerInfo').textContent = `Fournisseur: ${config.provider}`;
+                        
+                        // Sélectionner le fournisseur
+                        document.querySelectorAll('.provider-card').forEach(card => {
+                            card.classList.remove('selected');
+                            if (card.dataset.provider === config.provider) {
+                                card.classList.add('selected');
+                                selectedProvider = config.provider;
+                            }
+                        });
+                    } else if (clientConfigService) {
+                        const localConfig = await clientConfigService.loadConfig();
+                        if (localConfig && localConfig.apiKey) {
+                            document.getElementById('currentConfig').style.display = 'block';
+                            const masked = localConfig.apiKey.substring(0, 8) + '***' + localConfig.apiKey.substring(localConfig.apiKey.length - 4);
+                            document.getElementById('maskedKey').textContent = masked;
+                            document.getElementById('providerInfo').textContent = `Fournisseur: ${localConfig.provider} (IndexedDB local)`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erreur chargement configuration:', error);
+                    if (clientConfigService) {
+                        const localConfig = await clientConfigService.loadConfig();
+                        if (localConfig && localConfig.apiKey) {
+                            document.getElementById('currentConfig').style.display = 'block';
+                            const masked = localConfig.apiKey.substring(0, 8) + '***' + localConfig.apiKey.substring(localConfig.apiKey.length - 4);
+                            document.getElementById('maskedKey').textContent = masked;
+                            document.getElementById('providerInfo').textContent = `Fournisseur: ${localConfig.provider} (IndexedDB local)`;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            // Sélectionner OpenAI par défaut
+            document.querySelector('[data-provider="openai"]').classList.add('selected');
+            
+            // Pré-remplir l'ID utilisateur depuis le localStorage
+            const savedUserId = localStorage.getItem('devops-user-id');
+            if (savedUserId) {
+                document.getElementById('userId').value = savedUserId;
+                loadExistingConfig();
+            }
+            
+            // Charger la configuration si l'ID utilisateur change
+            document.getElementById('userId').addEventListener('blur', loadExistingConfig);
+        });
+    </script>
+</body>
+</html>

@@ -1,12 +1,68 @@
 // Connexion WebSocket au serveur
 const socket = io();
 let startTime = Date.now();
+let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
+
+// Sauvegarder l'ID utilisateur pour la session
+localStorage.setItem('devops-user-id', userId);
 
 // Éléments DOM
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const uptimeElement = document.getElementById('uptime');
+const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
+
+// Charger la configuration utilisateur depuis Supabase
+async function loadUserConfig() {
+    try {
+        const response = await fetch(`/api/config/load/${userId}`);
+        const result = await response.json();
+        
+        if (result.success && result.config) {
+            return { ...result.config, source: 'supabase' };
+        }
+        
+        // Fallback local si Supabase est indisponible
+        if (clientConfigService && await clientConfigService.hasConfig()) {
+            const localConfig = await clientConfigService.loadConfig();
+            if (localConfig) {
+                return { ...localConfig, source: 'local' };
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Erreur chargement config:', error);
+        if (clientConfigService && await clientConfigService.hasConfig()) {
+            const localConfig = await clientConfigService.loadConfig();
+            if (localConfig) {
+                return { ...localConfig, source: 'local' };
+            }
+        }
+        return null;
+    }
+}
+
+// Charger l'historique des conversations depuis Supabase
+async function loadConversationHistory() {
+    try {
+        // Pour l'instant, on ajoute juste un message de bienvenue
+        // Plus tard, on pourra implémenter le chargement depuis Supabase
+        addMessage('🤖 Bonjour ! Je suis votre assistant DevOps intelligent avec IA.', 'bot', new Date().toISOString());
+        addMessage('Je peux vous aider avec les déploiements, monitoring, erreurs et optimisation DevOps.', 'bot', new Date().toISOString());
+        
+        // Vérifier si l'IA est configurée
+        const config = await loadUserConfig();
+        if (!config) {
+            addMessage('🤖 Pour activer les réponses intelligentes, veuillez configurer votre clé API. <a href="/configuration.html" style="color: #667eea; text-decoration: underline;">Configurer maintenant</a>', 'bot', new Date().toISOString());
+        } else {
+            addMessage(`🎉 IA configurée avec ${config.provider} ! Je peux maintenant vous fournir des réponses intelligentes spécialisées DevOps.`, 'bot', new Date().toISOString());
+        }
+    } catch (error) {
+        console.error('Erreur chargement historique:', error);
+        addMessage('🤖 Bonjour ! Je suis votre assistant DevOps.', 'bot', new Date().toISOString());
+    }
+}
 
 // Gestionnaires d'événements
 socket.on('connect', () => {
@@ -28,10 +84,19 @@ function sendMessage() {
     const message = messageInput.value.trim();
     if (message) {
         addMessage(message, 'user', new Date().toISOString());
-        socket.emit('message', {
-            message: message,
-            userId: 'user-' + Math.random().toString(36).substr(2, 9)
+        
+        // Envoyer le message ; le serveur récupère la clé complète côté backend.
+        // En fallback local (sans Supabase), on transmet la config locale.
+        loadUserConfig().then(userConfig => {
+            socket.emit('message', {
+                message: message,
+                userId: userId,
+                userConfigLocal: userConfig && userConfig.source === 'local'
+                    ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
+                    : null
+            });
         });
+        
         messageInput.value = '';
         messageInput.focus();
     }
@@ -174,9 +239,12 @@ function updateMetrics() {
 }
 
 // Initialisation
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Focus sur l'input
     messageInput.focus();
+    
+    // Charger l'historique et la configuration depuis Supabase
+    await loadConversationHistory();
     
     // Animation initiale des métriques
     setTimeout(animateMetrics, 500);
@@ -188,10 +256,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Gestion du bouton d'envoi
     sendButton.addEventListener('click', sendMessage);
     
-    // Messages de bienvenue automatiques
-    setTimeout(() => {
-        addMessage('Je suis prêt à vous aider ! Essayez de me demander de "déployer l\'application" ou de "montrer le monitoring".', 'bot', new Date().toISOString());
-    }, 2000);
+    // Mettre à jour le statut IA dans l'interface
+    const config = await loadUserConfig();
+    const aiStatusElement = document.getElementById('aiStatus');
+    if (config) {
+        const sourceLabel = config.source === 'local' ? ' (local)' : '';
+        aiStatusElement.textContent = '✅ ' + config.provider + sourceLabel;
+        aiStatusElement.style.color = '#4caf50';
+    } else {
+        aiStatusElement.textContent = '⚠️ Non configurée';
+        aiStatusElement.style.color = '#ff9800';
+    }
 });
 
 // Gestion des erreurs
