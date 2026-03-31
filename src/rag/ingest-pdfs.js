@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { PDFParse } = require('pdf-parse');
 const { ChromaClient } = require('chromadb');
+const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 
 require('dotenv').config();
 
@@ -9,15 +10,21 @@ const DATA_DIR = process.env.RAG_DATA_DIR || 'D:/Dev/Projet_fil/data_course';
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
 const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
 const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 120);
+const RAG_INGEST_BATCH_SIZE = Number(process.env.RAG_INGEST_BATCH_SIZE || 12);
 const CHROMA_HOST = process.env.CHROMA_HOST || '127.0.0.1';
 const CHROMA_PORT = Number(process.env.CHROMA_PORT || 8000);
 const CHROMA_SSL = process.env.CHROMA_SSL === 'true';
 const CHROMA_URL = process.env.CHROMA_URL || '';
 
 function getChromaPath() {
-  if (CHROMA_URL) return CHROMA_URL;
-  const protocol = CHROMA_SSL ? 'https' : 'http';
-  return `${protocol}://${CHROMA_HOST}:${CHROMA_PORT}`;
+  const raw = CHROMA_URL
+    ? CHROMA_URL
+    : `${CHROMA_SSL ? 'https' : 'http'}://${CHROMA_HOST}:${CHROMA_PORT}`;
+
+  if (/\/api\/v\d+\/?$/.test(raw) || /\/api\/?$/.test(raw)) {
+    return raw.replace(/\/$/, '');
+  }
+  return `${raw.replace(/\/$/, '')}/api/v1`;
 }
 
 function chunkText(text, chunkSize = 1800, overlap = 250) {
@@ -51,23 +58,10 @@ async function extractTextFromPdf(filePath) {
   }
 }
 
-async function getEmbeddingModel() {
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) {
-    throw new Error('GEMINI_API_KEY manquante pour générer les embeddings');
-  }
-  const genAI = new GoogleGenerativeAI(geminiKey);
-  return genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-}
-
-async function embedTexts(model, texts) {
-  const embeddings = [];
-  for (const text of texts) {
-    const result = await model.embedContent(text);
-    embeddings.push(result.embedding.values);
-  }
-  return embeddings;
+function getEmbeddingFunction() {
+  // Embeddings locaux (pas de quota externe), idéal pour backup/offline.
+  // Le modèle est téléchargé/chargé via transformers au premier run.
+  return new DefaultEmbeddingFunction();
 }
 
 async function main() {
@@ -89,17 +83,16 @@ async function main() {
 
   const chromaPath = getChromaPath();
   console.log('Endpoint Chroma:', chromaPath);
+  const embeddingFunction = getEmbeddingFunction();
   const client = new ChromaClient({ path: chromaPath });
 
   // Assurer la collection
   let collection;
   try {
-    collection = await client.getCollection({ name: CHROMA_COLLECTION });
+    collection = await client.getCollection({ name: CHROMA_COLLECTION, embeddingFunction });
   } catch {
-    collection = await client.createCollection({ name: CHROMA_COLLECTION });
+    collection = await client.createCollection({ name: CHROMA_COLLECTION, embeddingFunction });
   }
-
-  const model = await getEmbeddingModel();
 
   let globalIndex = 0;
 
@@ -113,8 +106,6 @@ async function main() {
     }
 
     console.log(`➡️ ${chunks.length} chunks générés pour ${path.basename(filePath)}`);
-
-    const embeddings = await embedTexts(model, chunks);
 
     const ids = [];
     const metadatas = [];
@@ -131,12 +122,14 @@ async function main() {
       globalIndex++;
     }
 
-    await collection.add({
-      ids,
-      documents,
-      metadatas,
-      embeddings,
-    });
+    for (let start = 0; start < ids.length; start += RAG_INGEST_BATCH_SIZE) {
+      const end = Math.min(start + RAG_INGEST_BATCH_SIZE, ids.length);
+      await collection.add({
+        ids: ids.slice(start, end),
+        documents: documents.slice(start, end),
+        metadatas: metadatas.slice(start, end),
+      });
+    }
 
     console.log(`✅ Indexation terminée pour ${path.basename(filePath)}`);
   }

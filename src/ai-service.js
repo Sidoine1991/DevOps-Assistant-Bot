@@ -59,6 +59,7 @@ class AIService {
       let ragChunks = [];
       let ragSources = [];
       const grounding = context.knowledgeContext || { contextText: '', sources: [] };
+      const userKnowledgeContext = context.userKnowledgeContext || { chunks: [], sources: [] };
       if (grounding.contextText) {
         systemPrompt += `\n\nContexte de sources fiables externes:\n${grounding.contextText}`;
       }
@@ -79,6 +80,11 @@ class AIService {
         } else {
           console.log('RAG: aucun chunk pertinent trouvé pour la question');
         }
+      }
+
+      // Ajouter les connaissances personnalisées issues des documents uploadés.
+      if (Array.isArray(userKnowledgeContext.chunks) && userKnowledgeContext.chunks.length > 0) {
+        ragChunks = [...userKnowledgeContext.chunks, ...ragChunks];
       }
 
       // Mode local RAG: répond sans clé API, directement depuis les extraits.

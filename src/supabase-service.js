@@ -252,6 +252,51 @@ class SupabaseService {
       return null;
     }
   }
+
+  async saveUserKnowledgeChunks(rows) {
+    if (!this.client || !Array.isArray(rows) || rows.length === 0) {
+      return 0;
+    }
+
+    try {
+      const { data, error } = await this.client
+        .from('user_knowledge_chunks')
+        .insert(rows)
+        .select('id');
+
+      if (error) throw error;
+      return Array.isArray(data) ? data.length : 0;
+    } catch (error) {
+      if (error && error.code === '42P01') {
+        console.warn('Table user_knowledge_chunks absente. Exécutez la migration SQL dédiée.');
+        return 0;
+      }
+      console.error('Erreur sauvegarde user_knowledge_chunks:', error);
+      return 0;
+    }
+  }
+
+  async getUserKnowledgeChunks(userId, limit = 300) {
+    if (!this.client || !userId) return [];
+
+    try {
+      const { data, error } = await this.client
+        .from('user_knowledge_chunks')
+        .select('source_name, source_type, chunk_index, chunk_text, metadata, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      if (error && error.code === '42P01') {
+        return [];
+      }
+      console.error('Erreur récupération user_knowledge_chunks:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = SupabaseService;

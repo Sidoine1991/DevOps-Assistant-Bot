@@ -170,12 +170,16 @@ function addMessage(text, sender, timestamp, sources = []) {
         sources.forEach((source) => {
             const line = document.createElement('div');
             line.className = 'message-source-item';
-            const link = document.createElement('a');
-            link.href = source.url;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.textContent = source.title;
-            line.appendChild(link);
+            if (source.url) {
+                const link = document.createElement('a');
+                link.href = source.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = source.title || source.url;
+                line.appendChild(link);
+            } else {
+                line.textContent = source.title || 'Source';
+            }
             sourceWrap.appendChild(line);
         });
         content.appendChild(sourceWrap);

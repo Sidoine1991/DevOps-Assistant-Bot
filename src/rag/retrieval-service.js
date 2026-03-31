@@ -1,4 +1,6 @@
 const { ChromaClient } = require('chromadb');
+const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
+const ChromaBackupManager = require('./chroma-backup-manager');
 
 class RetrievalService {
   constructor() {
@@ -8,17 +10,42 @@ class RetrievalService {
     this.chromaPort = Number(process.env.CHROMA_PORT || 8000);
     this.chromaSsl = process.env.CHROMA_SSL === 'true';
     this.chromaUrl = process.env.CHROMA_URL || '';
+    this.chromaFallbackUrl = process.env.CHROMA_FALLBACK_URL || '';
     this.client = null;
     this.collection = null;
     this.gemini = null;
+    this.embeddingFunction = new DefaultEmbeddingFunction();
+    this.backupManager = new ChromaBackupManager();
   }
 
   getChromaPath() {
-    if (this.chromaUrl) {
-      return this.chromaUrl;
+    const raw = this.chromaUrl
+      ? this.chromaUrl
+      : `${this.chromaSsl ? 'https' : 'http'}://${this.chromaHost}:${this.chromaPort}`;
+
+    // Le serveur Chroma expose généralement l’API sous /api/v1
+    // (les clients JS ont besoin d’un basePath cohérent).
+    if (/\/api\/v\d+\/?$/.test(raw) || /\/api\/?$/.test(raw)) {
+      return raw.replace(/\/$/, '');
     }
-    const protocol = this.chromaSsl ? 'https' : 'http';
-    return `${protocol}://${this.chromaHost}:${this.chromaPort}`;
+    return `${raw.replace(/\/$/, '')}/api/v1`;
+  }
+
+  normalizeApiPath(rawUrl) {
+    if (!rawUrl) return '';
+    if (/\/api\/v\d+\/?$/.test(rawUrl) || /\/api\/?$/.test(rawUrl)) {
+      return rawUrl.replace(/\/$/, '');
+    }
+    return `${rawUrl.replace(/\/$/, '')}/api/v1`;
+  }
+
+  getCandidatePaths() {
+    const primary = this.getChromaPath();
+    const candidates = [primary];
+    if (this.chromaFallbackUrl) {
+      candidates.push(this.normalizeApiPath(this.chromaFallbackUrl));
+    }
+    return [...new Set(candidates)];
   }
 
   async initialize() {
@@ -28,20 +55,49 @@ class RetrievalService {
     }
 
     try {
-      const { GoogleGenerativeAI } = require('@google/generative-ai');
-      const geminiKey = process.env.GEMINI_API_KEY;
-      if (!geminiKey) {
-        console.warn('GEMINI_API_KEY manquante, RAG désactivé');
-        this.enabled = false;
-        return;
+      const candidates = this.getCandidatePaths();
+      let connected = false;
+      let lastError = null;
+
+      for (const chromaPath of candidates) {
+        try {
+          this.client = new ChromaClient({ path: chromaPath });
+          this.collection = await this.client.getCollection({
+            name: this.collectionName,
+            embeddingFunction: this.embeddingFunction,
+          });
+          console.log(`✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${chromaPath})`);
+          connected = true;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      this.gemini = new GoogleGenerativeAI(geminiKey).getGenerativeModel({ model: 'gemini-embedding-001' });
-      const chromaPath = this.getChromaPath();
-      this.client = new ChromaClient({ path: chromaPath });
-      this.collection = await this.client.getCollection({ name: this.collectionName });
+      if (!connected && this.backupManager.hasBackupConfigured()) {
+        console.warn('RAG: tentative de restauration automatique depuis le backup zip...');
+        const restored = await this.backupManager.restoreBackup();
+        if (restored) {
+          for (const chromaPath of candidates) {
+            try {
+              this.client = new ChromaClient({ path: chromaPath });
+              this.collection = await this.client.getCollection({
+                name: this.collectionName,
+                embeddingFunction: this.embeddingFunction,
+              });
+              console.log(`✅ RAG restauré via backup puis reconnecté (${chromaPath})`);
+              connected = true;
+              break;
+            } catch (error) {
+              lastError = error;
+            }
+          }
+        }
+      }
 
-      console.log(`✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${chromaPath})`);
+      if (!connected) {
+        throw lastError || new Error('Connexion Chroma impossible');
+      }
     } catch (error) {
       const chromaPath = this.getChromaPath();
       console.warn(
@@ -54,22 +110,16 @@ class RetrievalService {
   }
 
   async embedQuery(query) {
-    if (!this.gemini) return null;
-    const result = await this.gemini.embedContent(query);
-    return result.embedding.values;
+    // Plus besoin de générer explicitement: l’embeddingFunction est attachée à la collection.
+    // Gardé pour compat, mais non utilisé.
+    return null;
   }
 
   async retrieveRelevantChunks(query, topK = 4) {
     if (!this.enabled || !this.collection) return [];
 
     try {
-      const queryEmbedding = await this.embedQuery(query);
-      if (!queryEmbedding) return [];
-
-      const results = await this.collection.query({
-        queryEmbeddings: [queryEmbedding],
-        nResults: topK,
-      });
+      const results = await this.collection.query({ queryTexts: [query], nResults: topK });
 
       const documents = results.documents?.[0] || [];
       const metadatas = results.metadatas?.[0] || [];

@@ -45,6 +45,8 @@ postgres_data/
 # Temporary files
 tmp/
 temp/
+chroma_db/
+chroma_db_backup.zip
 
 # Other local projects
 HumanLink/

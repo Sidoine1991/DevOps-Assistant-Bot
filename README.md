@@ -184,6 +184,9 @@ Variables principales à renseigner :
 - `CHROMA_PORT=`
 - `CHROMA_SSL=`
 - `CHROMA_URL=` (optionnel, prioritaire sur host/port)
+- `CHROMA_FALLBACK_URL=` (optionnel, endpoint secondaire)
+- `RAG_CHROMA_BACKUP_URL=` (optionnel, URL Google Drive du zip de backup)
+- `RAG_CHROMA_BACKUP_ZIP_PATH=` (optionnel, chemin local du zip)
 
 ### Diagnostic configuration IA et mode degrade
 
@@ -235,6 +238,8 @@ Variables d’environnement à configurer dans Render :
 - `RAG_COLLECTION=devops_courses`
 - `CHROMA_HOST`, `CHROMA_PORT`, `CHROMA_SSL`
 - `CHROMA_URL` (ex: `http://127.0.0.1:8000`)
+- `CHROMA_FALLBACK_URL` (ex: `http://127.0.0.1:8001`)
+- `RAG_CHROMA_BACKUP_URL` (zip Drive)
 
 ---
 
@@ -265,13 +270,27 @@ Des captures d’écran de l’interface se trouvent dans `media/` (démonstrati
 > Les captures sont stockées dans le dossier `media/`.
 
 ### Écran d'accueil
-![Accueil du bot](media/bot-home.png)
+![Accueil du bot](media/capt1.jpeg)
 
 ### Discussion et réponses
-![Chatbot en conversation](media/bot-chat.png)
+![Chatbot en conversation](media/capt2.jpeg)
 
 ### Configuration IA / Mode local RAG
-![Page de configuration](media/bot-config.png)
+![Page de configuration](media/capt3.jpeg)
+
+## 📂 Knowledge Base utilisateur (upload dynamique)
+
+- Quand un utilisateur envoie un document (pdf/txt/md/json/log), le backend :
+  - extrait automatiquement le texte,
+  - le découpe en `chunks`,
+  - stocke ces chunks dans Supabase (`user_knowledge_chunks`),
+  - réutilise ces chunks dans les prochaines réponses pour le même utilisateur.
+- Migration SQL à exécuter dans Supabase :
+  - `database/migrations/20260331_add_user_knowledge_chunks.sql`
+- Variables utiles :
+  - `USER_KNOWLEDGE_CHUNK_SIZE` (défaut `1200`)
+  - `USER_KNOWLEDGE_CHUNK_OVERLAP` (défaut `150`)
+  - `USER_KNOWLEDGE_MAX_CHUNKS_PER_DOC` (défaut `60`)
 
 ## Exploitation configuration IA
 

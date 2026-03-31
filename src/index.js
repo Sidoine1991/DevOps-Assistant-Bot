@@ -8,6 +8,7 @@ const ConfigService = require('./config-service');
 const SupabaseService = require('./supabase-service');
 const SupabaseConfigService = require('./supabase-config-service');
 const KnowledgeService = require('./knowledge-service');
+const UserKnowledgeService = require('./user-knowledge-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +31,7 @@ const aiService = new AIService();
 const supabaseService = new SupabaseService();
 const supabaseConfigService = new SupabaseConfigService();
 const knowledgeService = new KnowledgeService();
+const userKnowledgeService = new UserKnowledgeService(supabaseService);
 
 // Routes
 app.get('/health', (req, res) => {
@@ -257,6 +259,14 @@ io.on('connection', (socket) => {
       }
 
       const knowledgeContext = await knowledgeService.getGroundingContext(message);
+      const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+
+      // Ingestion automatique des documents utilisateur (chunking + stockage Supabase).
+      const ingestion = await userKnowledgeService.ingestAttachments(userId, attachments);
+      if (ingestion.ingestedFiles > 0) {
+        console.log(`Knowledge ingest: ${ingestion.ingestedFiles} fichier(s), ${ingestion.ingestedChunks} chunk(s), user=${userId}`);
+      }
+      const userKnowledgeContext = await userKnowledgeService.getContextForQuery(userId, message, 4);
 
       if (userConfig && apiKey && provider !== 'local-rag') {
         if (provider === 'openai') {
@@ -279,24 +289,32 @@ io.on('connection', (socket) => {
         hasCustomKey: !!userConfig,
         provider: provider,
         preferLocalRag: provider === 'local-rag',
-        attachments: Array.isArray(data.attachments) ? data.attachments : [],
-        knowledgeContext
+        attachments,
+        knowledgeContext,
+        userKnowledgeContext
       });
       
       // Sauvegarder la conversation dans Supabase
       await supabaseService.saveConversation(userId, message, response, {
         provider: provider,
         hasCustomKey: !!userConfig,
-        attachmentsCount: Array.isArray(data.attachments) ? data.attachments.length : 0,
+        attachmentsCount: attachments.length,
+        ingestedFiles: ingestion.ingestedFiles,
+        ingestedChunks: ingestion.ingestedChunks,
         userAgent: data.userAgent,
         timestamp: new Date().toISOString()
       });
+
+      const combinedSources = [
+        ...(Array.isArray(knowledgeContext.sources) ? knowledgeContext.sources : []),
+        ...(Array.isArray(userKnowledgeContext.sources) ? userKnowledgeContext.sources : []),
+      ];
       
       socket.emit('response', { 
         message: response,
         timestamp: new Date().toISOString(),
         bot: userConfig ? `DevOps Assistant AI (${provider.toUpperCase()})` : 'DevOps Assistant AI',
-        sources: knowledgeContext.sources
+        sources: combinedSources
       });
       
       if (userConfig) {
