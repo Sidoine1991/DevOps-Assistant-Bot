@@ -460,11 +460,14 @@ function updateMetrics() {
     diskValue.textContent = disk + '%';
 }
 
-// Initialisation
-document.addEventListener('DOMContentLoaded', async () => {
+// Initialisation — script chargé après DOMContentLoaded (bootstrap-chat.js), il faut lancer tout de suite si le doc est déjà prêt
+async function initChatApp() {
     if (!isUserVerified) {
         window.location.href = '/login.html';
         return;
+    }
+    if (socket.connected) {
+        updateStatus('online');
     }
     // Focus sur l'input
     messageInput.focus();
@@ -542,7 +545,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             aiBadgeElement.className = 'ai-badge warning';
         }
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initChatApp);
+} else {
+    initChatApp();
+}
 
 // Gestion des erreurs
 socket.on('connect_error', (error) => {

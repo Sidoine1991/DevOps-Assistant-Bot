@@ -98,7 +98,7 @@ class SupabaseConfigService {
 
       const { data, error } = await this.client
         .from('user_configs')
-        .upsert([config])
+        .upsert([config], { onConflict: 'user_id' })
         .select();
 
       if (error) {
