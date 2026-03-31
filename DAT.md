@@ -1,221 +1,134 @@
-# Document d'Architecture Technique (DAT)
+# DAT - Document d'Architecture Technique
 
-## 1. Description Générale du Projet
+## 1) Portee et objectif
 
-### 1.1 Nom du projet
-DevOps Assistant Bot
+`DevOps Assistant Bot` est une application web Node.js qui assiste les juniors DevOps en proposant:
 
-### 1.2 Objectif
-Développer un chatbot intelligent qui assiste les développeurs dans leurs tâches DevOps quotidiennes : déploiement, monitoring, gestion des erreurs et optimisation des infrastructures.
+- réponses IA contextualisées (Gemini / OpenAI),
+- réponses locales via RAG quand aucune clé IA n'est disponible,
+- ingestion continue de PDF de cours et de documents utilisateur,
+- authentification email OTP et isolation des données par utilisateur.
 
-### 1.3 Innovation
-- Intelligence artificielle conversationnelle spécialisée DevOps
-- Auto-diagnostic des problèmes d'infrastructure
-- Suggestions proactives d'optimisation basées sur l'apprentissage
+## 2) Architecture cible (etat actuel)
 
-## 2. Architecture Technique
-
-### 2.1 Schéma d'architecture global
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Frontend  │    │ API Gateway │    │ Bot Service │
-│   (React)   │◄──►│  (Express)  │◄──►│ (Python)    │
-└─────────────┘    └─────────────┘    └─────────────┘
-                                             │
-                                      ┌──────┴──────┐
-                                      │ Command     │
-                                      │ Engine      │
-                                      │ (Node.js)   │
-                                      └──────┬──────┘
-                                             │
-        ┌─────────────┐    ┌─────────────┐   │   ┌─────────────┐
-        │ Supabase    │    │    Redis    │◄──┼──►│   OpenAI    │
-        │ (PostgreSQL)│    │   (Cache)   │   │   │   API       │
-        └─────────────┘    └─────────────┘   │   └─────────────┘
-                                             │
-                                      ┌──────┴──────┐
-                                      │ Monitoring  │
-                                      │ (Prometheus)│
-                                      └─────────────┘
+```mermaid
+flowchart TD
+    UI[Frontend public/*] --> API[Express + Socket.IO]
+    API --> AIS[AIService]
+    API --> RAGS[RetrievalService]
+    API --> UKS[UserKnowledgeService]
+    API --> AUTHS[AuthService]
+    API --> SVC[SupabaseService]
+    API --> CFG[SupabaseConfigService]
+    RAGS --> CHROMA[(ChromaDB)]
+    RAGS -. restore .-> ZIP[(Backup zip Chroma)]
+    UKS --> SUPA[(Supabase PostgreSQL RLS)]
+    SVC --> SUPA
+    CFG --> SUPA
+    AUTHS --> SUPA
+    AIS --> GEM[Gemini API]
+    AIS --> OAI[OpenAI API]
 ```
 
-### 2.2 Composants techniques
+## 3) Composants techniques
 
-#### 2.2.1 Frontend
-- **Technologie**: HTML5 + CSS3 + JavaScript (vanilla)
-- **Fonction**: Interface utilisateur pour le chatbot
-- **Communication**: WebSocket avec le backend
+### Frontend
 
-#### 2.2.2 Backend Principal
-- **Technologie**: Node.js + Express
-- **Fonction**: API RESTful et gestion des connexions WebSocket
-- **Port**: 3000
+- Pages: `login.html`, `registration.html`, `index.html`, `configuration.html`, `home.html`
+- Chat temps reel via Socket.IO
+- Upload pieces jointes (PDF/TXT/JSON/LOG) pour enrichment de contexte
 
-#### 2.2.3 Service IA
-- **Technologie**: OpenAI GPT-3.5-turbo
-- **Fonction**: Traitement du langage naturel et intelligence artificielle
-- **Intégration**: API REST avec configuration utilisateur
+### Backend
 
-#### 2.2.4 Base de données
-- **Supabase**: PostgreSQL hébergé avec RLS
-- **Tables**: conversations, user_configs, system_metrics, error_logs
-- **Redis**: Cache et gestion des sessions en temps réel
+- `src/index.js`: routes REST + websocket + orchestration
+- `src/ai-service.js`: selection provider, prompt, synthese locale RAG
+- `src/rag/retrieval-service.js`: query Chroma + diversification des sources
+- `src/rag/ingest-pdfs.js`: chunking et indexation corpus `data_course/`
+- `src/user-knowledge-service.js`: ingestion documents utilisateur dans Supabase
+- `src/auth-service.js`: OTP email (request/verify)
 
-#### 2.2.5 Monitoring
-- **Prometheus**: Collecte de métriques
-- **Grafana**: Visualisation des dashboards
+### Donnees et persistance
 
-## 3. Pipeline CI/CD
+- Supabase PostgreSQL:
+  - `users`, `auth_verification_codes`
+  - `conversations`, `user_configs`
+  - `user_knowledge_chunks`, `error_logs`, `system_metrics`
+- ChromaDB:
+  - collection RAG `devops_courses`
+  - mode fallback par URL secondaire + restoration zip
 
-### 3.1 Étapes du pipeline
-1. **Build**: Construction de l'image Docker
-2. **Test**: Tests unitaires et d'intégration
-3. **Security**: Scan de vulnérabilités
-4. **Deploy**: Déploiement automatique en staging/production
+## 4) Flux fonctionnels
 
-### 3.2 Outils
-- **GitLab CI/CD**: Orchestration du pipeline
-- **Docker**: Conteneurisation
-- **GitLab Registry**: Stockage des images
+### 4.1 Authentification OTP
 
-### 3.3 Environnements
-- **Staging**: Déploiement automatique depuis la branche develop
-- **Production**: Déploiement manuel depuis la branche main
+```mermaid
+sequenceDiagram
+    participant U as Utilisateur
+    participant FE as Frontend
+    participant API as Backend
+    participant SB as Supabase
+    participant SMTP as SMTP
 
-## 4. Base de Données Supabase
-
-### 4.1 Architecture des données
-```
-Supabase (PostgreSQL)
-├── conversations (chat history)
-├── user_configs (preferences)
-├── system_metrics (performance)
-├── error_logs (debugging)
-├── user_sessions (auth)
-├── user_feedback (ratings)
-└── usage_analytics (tracking)
+    U->>FE: email + nom
+    FE->>API: POST /api/auth/request-code
+    API->>SB: upsert user + save code
+    API->>SMTP: envoi code OTP
+    U->>FE: saisie code
+    FE->>API: POST /api/auth/verify-code
+    API->>SB: valider code + verify user
+    API-->>FE: utilisateur verifie
 ```
 
-### 4.2 Sécurité des données
-- **RLS (Row Level Security)**: Isolation des données utilisateur
-- **Anonymisation**: Protection des informations sensibles
-- **Backup automatique**: Sauvegarde quotidienne Supabase
+### 4.2 Reponse chatbot online/offline
 
-### 4.3 Monitoring des données
-- **Métriques temps réel**: CPU, mémoire, disque
-- **Analytics**: Utilisation et performance
-- **Logs**: Erreurs et debugging
+```mermaid
+sequenceDiagram
+    participant U as Utilisateur
+    participant API as Backend
+    participant UK as UserKnowledgeService
+    participant RAG as Chroma
+    participant IA as Gemini/OpenAI
 
-## 5. Choix Techniques et Justifications
+    U->>API: message + attachments
+    API->>UK: ingestAttachments()
+    API->>UK: getContextForQuery()
+    API->>RAG: retrieveRelevantChunks()
+    alt mode local-rag
+        API-->>U: synthese locale + sources
+    else mode ia cloud
+        API->>IA: prompt + contexte RAG
+        IA-->>API: reponse
+        API-->>U: reponse + sources
+    end
+```
 
-### 5.1 Node.js pour le backend principal
-**Justification**: Performance élevée pour les applications temps réel, écosystème riche, support natif de WebSocket.
+## 5) Choix d'architecture et justification
 
-### 5.2 OpenAI pour l'IA
-**Justification**: API stable et documentée, réponses de haute qualité, coût prévisible, spécialisation DevOps possible via prompts.
+- Node.js + Socket.IO: simple pour une UX chat temps reel.
+- Supabase + RLS: persistance SQL + securite ligne par ligne.
+- ChromaDB: moteur vectoriel local compatible mode offline.
+- Multi-provider IA: flexibilité cout/disponibilite (Gemini/OpenAI/local).
+- Fallback Chroma backup: resilence en environnement contraint.
 
-### 5.3 Supabase pour la base de données
-**Justification**: PostgreSQL natif, RLS intégré, API REST automatique, monitoring intégré, scalabilité automatique.
+## 6) Securite
 
-### 5.4 Docker pour la conteneurisation
-**Justification**: Standard industriel, portabilité, isolation des dépendances, intégration parfaite avec les outils DevOps.
+- OTP email obligatoire avant usage du bot
+- RLS sur les tables utilisateur
+- variables sensibles via `.env` (non committe)
+- validations backend des donnees entrantes
 
-### 5.5 GitLab CI/CD
-**Justification**: Intégration native avec GitLab, support complet des pipelines DevOps, gratuit pour les projets open-source.
+## 7) Conteneurisation et deploiement
 
-## 6. Déploiement et Infrastructure
+- Local/prod-like via `docker-compose.yml`
+- Image app via `Dockerfile`
+- pipeline GitLab CI/CD (`.gitlab-ci.yml`) avec stages build/test/security/deploy
+- cible cloud Render (`render.yaml`)
 
-### 6.1 Architecture de déploiement
-- **Plateforme**: AWS ECS (Elastic Container Service)
-- **Base de données**: Supabase (géré)
-- **Load Balancer**: Application Load Balancer
-- **Cache**: AWS ElastiCache for Redis
-- **Monitoring**: AWS CloudWatch + Prometheus
+## 8) Dossier architecture detaille
 
-### 6.2 Configuration réseau
-- **VPC**: Isolation réseau
-- **Subnets**: Public pour le load balancer, privé pour les applications
-- **Security Groups**: Contrôle d'accès granulaire
+Voir egalement:
 
-## 7. Sécurité
-
-### 7.1 Mesures de sécurité
-- **HTTPS**: TLS 1.3 pour toutes les communications
-- **Authentification**: JWT tokens pour les API
-- **Variables d'environnement**: Secrets stockés dans AWS Secrets Manager
-- **Scanning automatique**: Vulnérabilités analysées à chaque build
-- **RLS Supabase**: Isolation des données au niveau base de données
-
-### 7.2 Gestion des clés API
-- **Stockage local**: Clés utilisateur dans localStorage
-- **Validation**: Format et validité des clés vérifiés
-- **Fallback**: Mode dégradé si API indisponible
-
-## 8. Monitoring et Logging
-
-### 8.1 Métriques surveillées
-- Performance du bot (temps de réponse)
-- Utilisation des ressources (CPU, mémoire)
-- Disponibilité des services
-- Satisfaction utilisateur (feedback)
-- Analytics d'utilisation
-
-### 8.2 Logs structurés
-- Format JSON
-- Niveaux de log (DEBUG, INFO, WARN, ERROR)
-- Agrégation centralisée dans Supabase
-- Export vers Prometheus
-
-## 9. Accès à l'Application
-
-### 9.1 URLs d'accès
-- **Local**: http://localhost:3000
-- **Configuration**: http://localhost:3000/config
-- **Production**: https://devops-assistant-bot.com
-- **Staging**: https://staging.devops-assistant-bot.com
-
-### 9.2 Accès base de données
-- **Supabase Dashboard**: https://supabase.com/dashboard/project/bpzqnooiisgadzicwupi
-- **Connection String**: Configurée dans DATABASE_URL
-
-## 10. Scalabilité et Performance
-
-### 10.1 Scalabilité horizontale
-- Conteneurs orchestrés par ECS
-- Auto-scaling basé sur le CPU et le nombre de connexions
-- Base de données Supabase avec read replicas automatiques
-
-### 10.2 Optimisations
-- Cache Redis pour les requêtes fréquentes
-- Connection pooling pour la base de données
-- CDN pour les assets statiques
-- Compression des réponses WebSocket
-
-## 11. Maintenance et Évolutions
-
-### 11.1 Stratégie de maintenance
-- Mises à jour rolling sans downtime
-- Backups automatiques quotidiens (Supabase)
-- Monitoring proactif des performances
-- Nettoyage automatique des anciennes données
-
-### 11.2 Roadmap d'évolution
-- Phase 1: MVP avec IA OpenAI 
-- Phase 2: Intégration Supabase complète 
-- Phase 3: Analytics avancés et dashboard
-- Phase 4: Multi-fournisseurs IA (Gemini, Claude)
-- Phase 5: Auto-guérison des infrastructures
-
-## 12. Documentation et Support
-
-### 12.1 Documentation technique
-- **DAT**: Document d'architecture technique (ce fichier)
-- **SETUP.md**: Guide d'installation et configuration
-- **SUPABASE_SETUP.md**: Configuration base de données
-- **DEPLOYMENT.md**: Guide de déploiement
-
-### 12.2 Support utilisateur
-- **Interface configuration**: Guide intégré pour les clés API
-- **Messages d'erreur**: Clairs et actionnables
-- **Fallback**: Mode dégradé fonctionnel
-- **Feedback**: Système d'évaluation intégré
+- `docs/architecture/01-overview.md`
+- `docs/architecture/02-components.md`
+- `docs/architecture/03-runtime-flows.md`
+- `docs/architecture/04-deployment-cicd.md`
