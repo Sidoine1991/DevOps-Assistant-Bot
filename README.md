@@ -38,7 +38,7 @@ Cette approche est pensée pour les contextes à connectivité variable et pour 
 ## Captures d'écran (dossier `media`)
 
 ### Logo application
-![Logo DevOps Assistant](media/Logo%20du%20bot%20DevOps%20Assistant.png)
+![Logo DevOps Assistant](public/media/app-logo.png)
 
 ### Écran d'accueil
 ![Capture accueil](media/capt1.png)
