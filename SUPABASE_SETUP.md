@@ -9,6 +9,19 @@
 3. Copiez-collez le contenu du fichier `database/schema.sql`
 4. Cliquez sur "Run" pour exécuter le script
 
+### 1.b Corriger le schema `user_configs` existant (recommande)
+
+Si votre projet existe deja et que vous voyez des erreurs comme `PGRST204` (`api_key` introuvable), executez ensuite cette migration:
+
+1. Ouvrez le fichier `database/migrations/20260331_fix_user_configs_schema.sql`
+2. Copiez-collez son contenu dans le SQL Editor Supabase
+3. Cliquez sur "Run"
+
+Cette migration aligne `user_configs` avec le backend:
+- colonnes attendues: `user_id`, `api_key`, `provider`, `updated_at`
+- `api_key` nullable pour le mode `local-rag`
+- contraintes provider + policies RLS minimales
+
 ### 2. Vérifier la création des tables
 
 Les tables suivantes seront créées :

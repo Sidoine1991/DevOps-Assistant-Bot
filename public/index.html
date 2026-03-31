@@ -28,6 +28,7 @@
                 <div class="chat-messages" id="chatMessages">
                     <!-- Messages chargés dynamiquement depuis Supabase -->
                 </div>
+                <div class="ai-badge warning" id="aiBadge" aria-live="polite">IA non configurée</div>
 
                 <div class="chat-input-container">
                     <div class="quick-actions">
@@ -49,16 +50,23 @@
                         </button>
                     </div>
                     <div class="input-group">
+                        <input type="file" id="attachmentInput" multiple accept="image/*,.pdf,.txt,.md,.json,.log" style="display:none;">
+                        <button id="attachButton" type="button" title="Ajouter une pièce jointe" aria-label="Ajouter une pièce jointe">
+                            <i class="material-icons">attach_file</i>
+                        </button>
                         <input 
                             type="text" 
                             id="messageInput" 
                             placeholder="Tapez votre message..."
+                            aria-label="Message à envoyer au chatbot"
                             onkeypress="handleKeyPress(event)"
                         >
-                        <button id="sendButton" onclick="sendMessage()">
+                        <button id="sendButton" onclick="sendMessage()" aria-label="Envoyer le message">
                             <i class="material-icons">send</i>
                         </button>
                     </div>
+                    <div id="attachmentPreview" style="margin-top:0.5rem;font-size:0.8rem;color:#666;"></div>
+                    <div id="connectionStatus" style="margin-top:0.4rem;font-size:0.8rem;color:#666;" aria-live="polite">Connecté au serveur</div>
                 </div>
             </div>
 

@@ -4,12 +4,21 @@ class RetrievalService {
   constructor() {
     this.enabled = process.env.RAG_ENABLED !== 'false';
     this.collectionName = process.env.RAG_COLLECTION || 'devops_courses';
-    this.chromaHost = process.env.CHROMA_HOST || 'localhost';
+    this.chromaHost = process.env.CHROMA_HOST || '127.0.0.1';
     this.chromaPort = Number(process.env.CHROMA_PORT || 8000);
     this.chromaSsl = process.env.CHROMA_SSL === 'true';
+    this.chromaUrl = process.env.CHROMA_URL || '';
     this.client = null;
     this.collection = null;
     this.gemini = null;
+  }
+
+  getChromaPath() {
+    if (this.chromaUrl) {
+      return this.chromaUrl;
+    }
+    const protocol = this.chromaSsl ? 'https' : 'http';
+    return `${protocol}://${this.chromaHost}:${this.chromaPort}`;
   }
 
   async initialize() {
@@ -28,16 +37,18 @@ class RetrievalService {
       }
 
       this.gemini = new GoogleGenerativeAI(geminiKey).getGenerativeModel({ model: 'gemini-embedding-001' });
-      this.client = new ChromaClient({
-        host: this.chromaHost,
-        port: this.chromaPort,
-        ssl: this.chromaSsl,
-      });
+      const chromaPath = this.getChromaPath();
+      this.client = new ChromaClient({ path: chromaPath });
       this.collection = await this.client.getCollection({ name: this.collectionName });
 
-      console.log(`✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${this.chromaHost}:${this.chromaPort})`);
+      console.log(`✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${chromaPath})`);
     } catch (error) {
-      console.error('❌ Erreur initialisation RAG:', error);
+      const chromaPath = this.getChromaPath();
+      console.warn(
+        `⚠️ RAG indisponible (${chromaPath}). ` +
+        'Le bot continue en mode fallback IA classique.'
+      );
+      console.warn('Détail RAG:', error.message);
       this.enabled = false;
     }
   }

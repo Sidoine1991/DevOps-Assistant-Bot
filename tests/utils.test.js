@@ -3,7 +3,7 @@ describe('Bot Utilities', () => {
   describe('Message Processing', () => {
     test('should handle deployment requests', () => {
       const message = 'déploie l\'application';
-      expect(message.toLowerCase()).toContain('déploye');
+      expect(message.toLowerCase()).toContain('déploi');
     });
 
     test('should handle monitoring requests', () => {
@@ -27,7 +27,7 @@ describe('Bot Utilities', () => {
       const input = 'déploie l\'application';
       let response = '';
       
-      if (input.toLowerCase().includes('déploye')) {
+      if (input.toLowerCase().includes('déploi')) {
         response = 'Je vais vous aider avec le déploiement. Quel service souhaitez-vous déployer ?';
       }
       

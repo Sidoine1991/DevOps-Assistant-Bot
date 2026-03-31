@@ -18,6 +18,10 @@ class ConfigService {
 
   // Valider le format de la clé API
   validateApiKey(apiKey, provider) {
+    if (provider === 'local-rag') {
+      return true;
+    }
+
     if (!apiKey || typeof apiKey !== 'string') {
       return false;
     }

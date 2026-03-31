@@ -11,7 +11,11 @@ const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const uptimeElement = document.getElementById('uptime');
+const attachmentInput = document.getElementById('attachmentInput');
+const attachButton = document.getElementById('attachButton');
+const attachmentPreview = document.getElementById('attachmentPreview');
 const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
+let pendingAttachments = [];
 
 // Charger la configuration utilisateur depuis Supabase
 async function loadUserConfig() {
@@ -56,7 +60,11 @@ async function loadConversationHistory() {
         if (!config) {
             addMessage('🤖 Pour activer les réponses intelligentes, veuillez configurer votre clé API. <a href="/configuration.html" style="color: #667eea; text-decoration: underline;">Configurer maintenant</a>', 'bot', new Date().toISOString());
         } else {
-            addMessage(`🎉 IA configurée avec ${config.provider} ! Je peux maintenant vous fournir des réponses intelligentes spécialisées DevOps.`, 'bot', new Date().toISOString());
+            if (config.provider === 'local-rag') {
+                addMessage('📚 Mode local RAG activé : je réponds à partir des documents indexés, même sans clé API.', 'bot', new Date().toISOString());
+            } else {
+                addMessage(`🎉 IA configurée avec ${config.provider} ! Je peux maintenant vous fournir des réponses intelligentes spécialisées DevOps.`, 'bot', new Date().toISOString());
+            }
         }
     } catch (error) {
         console.error('Erreur chargement historique:', error);
@@ -76,14 +84,30 @@ socket.on('disconnect', () => {
 });
 
 socket.on('response', (data) => {
-    addMessage(data.message, 'bot', data.timestamp);
+    addMessage(data.message, 'bot', data.timestamp, data.sources || []);
 });
 
 // Envoi de message
-function sendMessage() {
+async function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function setInputState(isBusy) {
+    sendButton.disabled = isBusy;
+    sendButton.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    messageInput.disabled = isBusy;
+}
+
+async function sendMessage() {
     const message = messageInput.value.trim();
     if (message) {
         addMessage(message, 'user', new Date().toISOString());
+        setInputState(true);
         
         // Envoyer le message ; le serveur récupère la clé complète côté backend.
         // En fallback local (sans Supabase), on transmet la config locale.
@@ -93,11 +117,17 @@ function sendMessage() {
                 userId: userId,
                 userConfigLocal: userConfig && userConfig.source === 'local'
                     ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
-                    : null
+                    : null,
+                attachments: pendingAttachments
             });
+        }).finally(() => {
+            setInputState(false);
         });
         
         messageInput.value = '';
+        pendingAttachments = [];
+        attachmentPreview.textContent = '';
+        attachmentInput.value = '';
         messageInput.focus();
     }
 }
@@ -117,7 +147,7 @@ function handleKeyPress(event) {
 }
 
 // Ajout de message dans le chat
-function addMessage(text, sender, timestamp) {
+function addMessage(text, sender, timestamp, sources = []) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
     
@@ -133,6 +163,23 @@ function addMessage(text, sender, timestamp) {
     // Traitement du texte pour les emojis et formatage
     const formattedText = formatMessage(text);
     content.innerHTML = formattedText;
+    if (sender === 'bot' && Array.isArray(sources) && sources.length > 0) {
+        const sourceWrap = document.createElement('div');
+        sourceWrap.className = 'message-sources';
+        sourceWrap.innerHTML = '<strong>Sources:</strong>';
+        sources.forEach((source) => {
+            const line = document.createElement('div');
+            line.className = 'message-source-item';
+            const link = document.createElement('a');
+            link.href = source.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = source.title;
+            line.appendChild(link);
+            sourceWrap.appendChild(line);
+        });
+        content.appendChild(sourceWrap);
+    }
     
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(content);
@@ -152,29 +199,17 @@ function addMessage(text, sender, timestamp) {
 
 // Formatage des messages (emojis, liens, etc.)
 function formatMessage(text) {
-    // Conversion des textes emoji en emojis réels
     let formatted = text
-        .replace(/🚀/g, '🚀')
-        .replace(/📊/g, '📊')
-        .replace(/🔍/g, '🔍')
-        .replace(/⚡/g, '⚡')
-        .replace(/👋/g, '👋')
-        .replace(/🎯/g, '🎯')
-        .replace(/✅/g, '✅')
-        .replace(/❌/g, '❌')
-        .replace(/⚠️/g, '⚠️')
-        .replace(/💡/g, '💡');
-    
-    // Conversion des sauts de ligne
-    formatted = formatted.replace(/\n/g, '<br>');
-    
-    // Mise en évidence des mots-clés
-    const keywords = ['erreur', 'déployer', 'monitoring', 'optimisation', 'performance'];
-    keywords.forEach(keyword => {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-        formatted = formatted.replace(regex, `<strong>${keyword}</strong>`);
-    });
-    
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^### (.*)$/gm, '<h4>$1</h4>')
+        .replace(/^## (.*)$/gm, '<h3>$1</h3>')
+        .replace(/^# (.*)$/gm, '<h2>$1</h2>')
+        .replace(/^- (.*)$/gm, '• $1')
+        .replace(/\n/g, '<br>');
+
     return formatted;
 }
 
@@ -189,6 +224,10 @@ function updateStatus(status) {
     } else {
         statusDot.className = 'status-dot offline';
         statusText.textContent = 'Hors ligne';
+    }
+    const liveStatus = document.getElementById('connectionStatus');
+    if (liveStatus) {
+        liveStatus.textContent = status === 'online' ? 'Connecté au serveur' : 'Connexion perdue';
     }
 }
 
@@ -255,17 +294,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Gestion du bouton d'envoi
     sendButton.addEventListener('click', sendMessage);
+    attachButton.addEventListener('click', () => attachmentInput.click());
+    attachmentInput.addEventListener('change', async (event) => {
+        const files = Array.from(event.target.files || []).slice(0, 4);
+        const loaded = [];
+        for (const file of files) {
+            if (file.size > 3 * 1024 * 1024) {
+                continue;
+            }
+            const data = await readFileAsDataURL(file);
+            loaded.push({
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                data,
+            });
+        }
+        pendingAttachments = loaded;
+        attachmentPreview.textContent = loaded.length > 0
+            ? `Pièces jointes: ${loaded.map((f) => f.name).join(', ')}`
+            : '';
+    });
     
     // Mettre à jour le statut IA dans l'interface
     const config = await loadUserConfig();
     const aiStatusElement = document.getElementById('aiStatus');
+    const aiBadgeElement = document.getElementById('aiBadge');
     if (config) {
         const sourceLabel = config.source === 'local' ? ' (local)' : '';
-        aiStatusElement.textContent = '✅ ' + config.provider + sourceLabel;
+        const providerLabel = config.provider === 'local-rag' ? 'mode local RAG' : config.provider;
+        aiStatusElement.textContent = '✅ ' + providerLabel + sourceLabel;
         aiStatusElement.style.color = '#4caf50';
+        if (aiBadgeElement) {
+            aiBadgeElement.textContent = `IA active: ${providerLabel}${sourceLabel}`;
+            aiBadgeElement.className = 'ai-badge success';
+        }
     } else {
         aiStatusElement.textContent = '⚠️ Non configurée';
         aiStatusElement.style.color = '#ff9800';
+        if (aiBadgeElement) {
+            aiBadgeElement.textContent = 'IA non configurée';
+            aiBadgeElement.className = 'ai-badge warning';
+        }
     }
 });
 

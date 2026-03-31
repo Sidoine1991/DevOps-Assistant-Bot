@@ -7,6 +7,7 @@ const AIService = require('./ai-service');
 const ConfigService = require('./config-service');
 const SupabaseService = require('./supabase-service');
 const SupabaseConfigService = require('./supabase-config-service');
+const KnowledgeService = require('./knowledge-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +29,7 @@ app.use(express.static('public'));
 const aiService = new AIService();
 const supabaseService = new SupabaseService();
 const supabaseConfigService = new SupabaseConfigService();
+const knowledgeService = new KnowledgeService();
 
 // Routes
 app.get('/health', (req, res) => {
@@ -35,7 +37,8 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/bot/status', async (req, res) => {
-  const isConnected = await supabaseService.isConnected();
+  const dbConnected = await supabaseService.isConnected();
+  const configConnected = await supabaseConfigService.isConnected();
   const stats = await supabaseService.getDashboardStats();
   
   res.json({ 
@@ -43,15 +46,19 @@ app.get('/api/bot/status', async (req, res) => {
     version: '1.0.0',
     hasAIConfig: process.env.OPENAI_API_KEY ? true : false,
     database: {
-      connected: isConnected,
+      connected: dbConnected,
       type: 'Supabase',
-      stats: stats
+      stats: stats,
+      configStore: {
+        connected: configConnected.success,
+        code: configConnected.code
+      }
     },
     services: {
       'command-engine': 'active',
       'monitor': 'active',
       'notification': 'active',
-      'database': isConnected ? 'active' : 'inactive'
+      'database': dbConnected ? 'active' : 'inactive'
     }
   });
 });
@@ -65,8 +72,9 @@ app.post('/api/config/validate', (req, res) => {
   const isValid = configService.validateApiKey(apiKey, provider);
   console.log('Validation result:', { isValid, keyLength: apiKey ? apiKey.length : 'null' });
   
-  res.json({ 
+  return res.status(200).json({
     isValid,
+    code: isValid ? 'VALID' : 'INVALID_FORMAT',
     message: isValid ? 'Clé API valide' : 'Format de clé API invalide'
   });
 });
@@ -78,53 +86,53 @@ app.post('/api/config/save', async (req, res) => {
     console.log('Save request:', { apiKey: apiKey ? '***' + apiKey.slice(-4) : 'null', provider, userId });
 
     // Validation
-    if (!apiKey || !provider || !userId) {
-      return res.json({ 
+    if (!provider || !userId || (provider !== 'local-rag' && !apiKey)) {
+      return res.status(400).json({
         success: false,
-        message: 'Clé API, fournisseur et ID utilisateur requis'
+        code: 'VALIDATION_ERROR',
+        message: 'Fournisseur et ID utilisateur requis. Clé API requise sauf en mode local-rag.'
       });
     }
 
     // Vérifier la connexion à Supabase avant de continuer
-    const supabaseReady = await supabaseConfigService.isConnected();
-    if (!supabaseReady) {
-      console.warn('SupabaseConfigService non connecté : vérifiez SUPABASE_URL, SUPABASE_ANON_KEY et la table user_configs');
-      return res.json({
+    const supabaseHealth = await supabaseConfigService.isConnected();
+    if (!supabaseHealth.success) {
+      console.warn('SupabaseConfigService non connecté:', supabaseHealth);
+      return res.status(503).json({
         success: false,
-        code: 'SUPABASE_NOT_READY',
-        message: 'Le stockage Supabase n’est pas configuré côté serveur. Vérifiez SUPABASE_URL, SUPABASE_ANON_KEY et la table user_configs.'
+        code: supabaseHealth.code,
+        message: supabaseHealth.message
       });
     }
 
     // Validation de format
-    const isValid = supabaseConfigService.validateApiKey(apiKey, provider);
+    const isValid = supabaseConfigService.validateApiKey(apiKey || '', provider);
     
     if (!isValid) {
-      return res.json({ 
+      return res.status(400).json({
         success: false,
+        code: 'INVALID_API_KEY_FORMAT',
         message: 'Format de clé API invalide'
       });
     }
     
     // Sauvegarder dans Supabase
-    const saved = await supabaseConfigService.saveUserConfig(userId, apiKey, provider);
+    const saved = await supabaseConfigService.saveUserConfig(userId, apiKey || '', provider);
     
-    if (saved) {
-      res.json({ 
+    if (saved.success) {
+      return res.status(200).json({
         success: true,
-        message: 'Configuration sauvegardée avec succès dans Supabase'
-      });
-    } else {
-      res.json({ 
-        success: false,
-        code: 'SUPABASE_SAVE_FAILED',
-        message: 'Erreur lors de la sauvegarde dans Supabase'
+        code: saved.code,
+        message: saved.message
       });
     }
+    console.warn('Échec save config:', saved);
+    return res.status(500).json(saved);
   } catch (error) {
     console.error('Erreur sauvegarde config:', error);
-    res.json({ 
+    return res.status(500).json({
       success: false,
+      code: 'SERVER_ERROR',
       message: 'Erreur serveur: ' + error.message
     });
   }
@@ -136,44 +144,46 @@ app.get('/api/config/load/:userId', async (req, res) => {
     const { userId } = req.params;
     
     if (!userId) {
-      return res.json({ 
+      return res.status(400).json({
         success: false,
+        code: 'VALIDATION_ERROR',
         message: 'ID utilisateur requis'
       });
     }
 
-    const supabaseReady = await supabaseConfigService.isConnected();
-    if (!supabaseReady) {
-      return res.json({
+    const supabaseHealth = await supabaseConfigService.isConnected();
+    if (!supabaseHealth.success) {
+      return res.status(503).json({
         success: false,
-        code: 'SUPABASE_NOT_READY',
-        message: 'Le stockage Supabase n’est pas disponible actuellement.'
+        code: supabaseHealth.code,
+        message: supabaseHealth.message
       });
     }
 
-    const config = await supabaseConfigService.getUserConfig(userId);
+    const configResult = await supabaseConfigService.getUserConfig(userId);
     
-    if (config) {
+    if (configResult.success && configResult.data) {
+      const config = configResult.data;
       // Masquer la clé API pour la réponse
       const maskedConfig = {
         ...config,
-        apiKey: config.apiKey.substring(0, 8) + '***' + config.apiKey.substring(config.apiKey.length - 4)
+        apiKey: config.apiKey && config.apiKey.length > 12
+          ? config.apiKey.substring(0, 8) + '***' + config.apiKey.substring(config.apiKey.length - 4)
+          : (config.provider === 'local-rag' ? 'Aucune clé API (mode local-rag)' : 'Clé API masquée')
       };
       
-      res.json({ 
+      return res.status(200).json({
         success: true,
+        code: configResult.code,
         config: maskedConfig
       });
-    } else {
-      res.json({ 
-        success: false,
-        message: 'Aucune configuration trouvée'
-      });
     }
+    return res.status(configResult.code === 'CONFIG_NOT_FOUND' ? 404 : 500).json(configResult);
   } catch (error) {
     console.error('Erreur chargement config:', error);
-    res.json({ 
+    return res.status(500).json({
       success: false,
+      code: 'SERVER_ERROR',
       message: 'Erreur serveur: ' + error.message
     });
   }
@@ -185,31 +195,33 @@ app.delete('/api/config/:userId', async (req, res) => {
     const { userId } = req.params;
     
     if (!userId) {
-      return res.json({ 
+      return res.status(400).json({
         success: false,
+        code: 'VALIDATION_ERROR',
         message: 'ID utilisateur requis'
       });
     }
 
-    const supabaseReady = await supabaseConfigService.isConnected();
-    if (!supabaseReady) {
-      return res.json({
+    const supabaseHealth = await supabaseConfigService.isConnected();
+    if (!supabaseHealth.success) {
+      return res.status(503).json({
         success: false,
-        code: 'SUPABASE_NOT_READY',
-        message: 'Le stockage Supabase n’est pas disponible actuellement.'
+        code: supabaseHealth.code,
+        message: supabaseHealth.message
       });
     }
 
     const deleted = await supabaseConfigService.deleteUserConfig(userId);
     
-    res.json({ 
-      success: deleted,
-      message: deleted ? 'Configuration supprimée avec succès' : 'Erreur lors de la suppression'
-    });
+    if (deleted.success) {
+      return res.status(200).json(deleted);
+    }
+    return res.status(500).json(deleted);
   } catch (error) {
     console.error('Erreur suppression config:', error);
-    res.json({ 
+    return res.status(500).json({
       success: false,
+      code: 'SERVER_ERROR',
       message: 'Erreur serveur: ' + error.message
     });
   }
@@ -227,13 +239,16 @@ io.on('connection', (socket) => {
       // Charger la configuration utilisateur depuis Supabase (clé non masquée côté serveur)
       let userConfig = null;
       let apiKey = process.env.OPENAI_API_KEY;
-      let provider = 'openai';
+      let provider = 'local-rag';
 
       const serverSideConfig = await supabaseConfigService.getUserConfig(userId);
-      if (serverSideConfig && serverSideConfig.apiKey) {
-        userConfig = serverSideConfig;
-        apiKey = serverSideConfig.apiKey;
-        provider = serverSideConfig.provider || 'openai';
+      if (serverSideConfig.success && serverSideConfig.data && serverSideConfig.data.apiKey) {
+        userConfig = serverSideConfig.data;
+        apiKey = serverSideConfig.data.apiKey;
+        provider = serverSideConfig.data.provider || 'openai';
+      } else if (serverSideConfig.success && serverSideConfig.data && serverSideConfig.data.provider === 'local-rag') {
+        userConfig = serverSideConfig.data;
+        provider = 'local-rag';
       } else if (data.userConfigLocal && data.userConfigLocal.apiKey) {
         // Fallback local: utilisé uniquement si Supabase n'a pas de config.
         userConfig = data.userConfigLocal;
@@ -241,7 +256,9 @@ io.on('connection', (socket) => {
         provider = data.userConfigLocal.provider || 'openai';
       }
 
-      if (userConfig && apiKey) {
+      const knowledgeContext = await knowledgeService.getGroundingContext(message);
+
+      if (userConfig && apiKey && provider !== 'local-rag') {
         if (provider === 'openai') {
           process.env.OPENAI_API_KEY = apiKey;
         } else if (provider === 'gemini') {
@@ -260,13 +277,17 @@ io.on('connection', (socket) => {
           'notification': 'active'
         },
         hasCustomKey: !!userConfig,
-        provider: provider
+        provider: provider,
+        preferLocalRag: provider === 'local-rag',
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
+        knowledgeContext
       });
       
       // Sauvegarder la conversation dans Supabase
       await supabaseService.saveConversation(userId, message, response, {
         provider: provider,
         hasCustomKey: !!userConfig,
+        attachmentsCount: Array.isArray(data.attachments) ? data.attachments.length : 0,
         userAgent: data.userAgent,
         timestamp: new Date().toISOString()
       });
@@ -274,7 +295,8 @@ io.on('connection', (socket) => {
       socket.emit('response', { 
         message: response,
         timestamp: new Date().toISOString(),
-        bot: userConfig ? `DevOps Assistant AI (${provider.toUpperCase()})` : 'DevOps Assistant AI'
+        bot: userConfig ? `DevOps Assistant AI (${provider.toUpperCase()})` : 'DevOps Assistant AI',
+        sources: knowledgeContext.sources
       });
       
       if (userConfig) {
@@ -307,27 +329,32 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
-  console.log(`Serveur DevOps Assistant Bot démarré sur le port ${PORT}`);
-  
-  // Vérifier la connexion à Supabase
-  const isConnected = await supabaseService.isConnected();
-  if (isConnected) {
-    console.log('✅ Connecté à Supabase - Base de données active');
-  } else {
-    console.log('⚠️ Mode fallback - Supabase non disponible');
-  }
-  
-  // Sauvegarder les métriques système toutes les 5 minutes
-  setInterval(async () => {
-    const metrics = {
-      cpu: Math.floor(Math.random() * 30) + 30,
-      memory: Math.floor(Math.random() * 20) + 50,
-      disk: Math.floor(Math.random() * 10) + 70,
-      activeUsers: io.engine.clientsCount
-    };
+function startServer() {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, async () => {
+    console.log(`Serveur DevOps Assistant Bot démarré sur le port ${PORT}`);
     
-    await supabaseService.saveSystemMetrics(metrics);
-  }, 5 * 60 * 1000); // 5 minutes
-});
+    const isConnected = await supabaseService.isConnected();
+    if (isConnected) {
+      console.log('✅ Connecté à Supabase - Base de données active');
+    } else {
+      console.log('⚠️ Mode fallback - Supabase non disponible');
+    }
+    
+    setInterval(async () => {
+      const metrics = {
+        cpu: Math.floor(Math.random() * 30) + 30,
+        memory: Math.floor(Math.random() * 20) + 50,
+        disk: Math.floor(Math.random() * 10) + 70,
+        activeUsers: io.engine.clientsCount
+      };
+      await supabaseService.saveSystemMetrics(metrics);
+    }, 5 * 60 * 1000);
+  });
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;

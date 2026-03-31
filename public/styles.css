@@ -107,6 +107,24 @@ body {
     gap: 1rem;
 }
 
+.ai-badge {
+    margin: 0 1.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.ai-badge.success {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.ai-badge.warning {
+    background: #fff8e1;
+    color: #e65100;
+}
+
 .message {
     display: flex;
     gap: 1rem;
@@ -150,6 +168,17 @@ body {
     font-size: 0.95rem;
 }
 
+.message-sources {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 0.8rem;
+}
+
+.message-source-item a {
+    color: #3f51b5;
+}
+
 .user-message .message-content {
     background: #667eea;
     color: white;
@@ -171,6 +200,22 @@ body {
 
 .message-content li {
     margin-bottom: 0.25rem;
+}
+
+.message-sources {
+    margin-top: 0.7rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 0.8rem;
+}
+
+.message-source-item {
+    margin-top: 0.2rem;
+}
+
+.message-source-item a {
+    color: #3f51b5;
+    text-decoration: underline;
 }
 
 .chat-input-container {
@@ -215,6 +260,24 @@ body {
 .input-group {
     display: flex;
     gap: 0.5rem;
+    align-items: center;
+}
+
+#attachButton {
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: #f2f4ff;
+    color: #5c6bc0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#attachButton:hover {
+    background: #e8ecff;
 }
 
 #messageInput {
@@ -251,6 +314,18 @@ body {
 
 #sendButton:active {
     transform: scale(0.95);
+}
+
+#sendButton:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+    outline: 2px solid #3949ab;
+    outline-offset: 2px;
 }
 
 .sidebar {

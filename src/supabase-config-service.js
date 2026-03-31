@@ -13,54 +13,109 @@ class SupabaseConfigService {
     }
   }
 
+  createResult(success, code, message, data = null) {
+    return { success, code, message, data };
+  }
+
+  mapSupabaseError(error, fallbackCode = 'SUPABASE_ERROR', fallbackMessage = 'Erreur Supabase') {
+    if (!error) {
+      return this.createResult(false, fallbackCode, fallbackMessage);
+    }
+
+    const code = error.code || fallbackCode;
+    const message = error.message || fallbackMessage;
+
+    if (code === '42P01') {
+      return this.createResult(false, 'SUPABASE_TABLE_MISSING', 'La table user_configs est introuvable.');
+    }
+    if (code === '42501') {
+      return this.createResult(false, 'SUPABASE_POLICY_DENIED', 'Accès refusé par les policies RLS sur user_configs.');
+    }
+    if (code === 'PGRST116') {
+      return this.createResult(false, 'CONFIG_NOT_FOUND', 'Aucune configuration trouvée pour cet utilisateur.');
+    }
+    if (code === 'PGRST204') {
+      return this.createResult(
+        false,
+        'SUPABASE_SCHEMA_MISMATCH',
+        "Schéma Supabase incompatible: vérifiez les colonnes attendues (user_id, api_key, provider, updated_at)."
+      );
+    }
+
+    return this.createResult(false, code, message);
+  }
+
   // Vérifier la connexion
   async isConnected() {
-    if (!this.client) return false;
-    
+    if (!this.client) {
+      return this.createResult(
+        false,
+        'SUPABASE_NOT_CONFIGURED',
+        'SUPABASE_URL ou SUPABASE_ANON_KEY manquant côté serveur.'
+      );
+    }
+
     try {
-      const { data, error } = await this.client
+      const { error } = await this.client
         .from('user_configs')
-        .select('count')
+        .select('user_id')
         .limit(1);
-      
-      return !error;
+
+      if (error) {
+        return this.mapSupabaseError(error, 'SUPABASE_CONNECT_FAILED', 'Connexion Supabase impossible.');
+      }
+
+      return this.createResult(true, 'CONNECTED', 'Connexion Supabase active.');
     } catch (error) {
       console.error('Erreur connexion Supabase Config:', error);
-      return false;
+      return this.createResult(false, 'SUPABASE_CONNECT_EXCEPTION', error.message);
     }
   }
 
   // Sauvegarder la configuration utilisateur dans Supabase
   async saveUserConfig(userId, apiKey, provider) {
     if (!this.client) {
-      console.log('Mode fallback: configuration non sauvegardée dans Supabase');
-      return null;
+      return this.createResult(
+        false,
+        'SUPABASE_NOT_CONFIGURED',
+        'Supabase non configuré côté serveur.'
+      );
     }
 
     try {
-      const config = {
-        user_id: userId,
-        api_key: apiKey,
-        provider: provider,
-        updated_at: new Date().toISOString()
-      };
+      const config = provider === 'local-rag'
+        ? {
+            user_id: userId,
+            provider: provider,
+            updated_at: new Date().toISOString()
+          }
+        : {
+            user_id: userId,
+            api_key: apiKey,
+            provider: provider,
+            updated_at: new Date().toISOString()
+          };
 
       const { data, error } = await this.client
         .from('user_configs')
         .upsert([config])
         .select();
 
-      if (error) throw error;
-      return data[0];
+      if (error) {
+        return this.mapSupabaseError(error, 'SUPABASE_SAVE_FAILED', 'Échec de sauvegarde dans user_configs.');
+      }
+      return this.createResult(true, 'CONFIG_SAVED', 'Configuration sauvegardée.', data[0]);
     } catch (error) {
       console.error('Erreur sauvegarde config Supabase:', error);
-      return null;
+      return this.createResult(false, 'SUPABASE_SAVE_EXCEPTION', error.message);
     }
   }
 
   // Récupérer la configuration utilisateur depuis Supabase
   async getUserConfig(userId) {
-    if (!this.client) return null;
+    if (!this.client) {
+      return this.createResult(false, 'SUPABASE_NOT_CONFIGURED', 'Supabase non configuré côté serveur.');
+    }
 
     try {
       const { data, error } = await this.client
@@ -69,26 +124,30 @@ class SupabaseConfigService {
         .eq('user_id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') throw error;
-      
-      if (data) {
-        return {
-          apiKey: data.api_key,
-          provider: data.provider,
-          timestamp: data.updated_at
-        };
+      if (error) {
+        return this.mapSupabaseError(error, 'SUPABASE_LOAD_FAILED', 'Échec du chargement de la configuration.');
       }
-      
-      return null;
+
+      if (data) {
+        return this.createResult(true, 'CONFIG_FOUND', 'Configuration chargée.', {
+          apiKey: data.api_key || '',
+          provider: data.provider || 'openai',
+          timestamp: data.updated_at
+        });
+      }
+
+      return this.createResult(false, 'CONFIG_NOT_FOUND', 'Aucune configuration trouvée pour cet utilisateur.');
     } catch (error) {
       console.error('Erreur récupération config Supabase:', error);
-      return null;
+      return this.createResult(false, 'SUPABASE_LOAD_EXCEPTION', error.message);
     }
   }
 
   // Supprimer la configuration utilisateur
   async deleteUserConfig(userId) {
-    if (!this.client) return false;
+    if (!this.client) {
+      return this.createResult(false, 'SUPABASE_NOT_CONFIGURED', 'Supabase non configuré côté serveur.');
+    }
 
     try {
       const { error } = await this.client
@@ -96,15 +155,22 @@ class SupabaseConfigService {
         .delete()
         .eq('user_id', userId);
 
-      return !error;
+      if (error) {
+        return this.mapSupabaseError(error, 'SUPABASE_DELETE_FAILED', 'Échec de suppression de la configuration.');
+      }
+      return this.createResult(true, 'CONFIG_DELETED', 'Configuration supprimée.');
     } catch (error) {
       console.error('Erreur suppression config Supabase:', error);
-      return false;
+      return this.createResult(false, 'SUPABASE_DELETE_EXCEPTION', error.message);
     }
   }
 
   // Valider la clé API (réutilise la même logique)
   validateApiKey(apiKey, provider) {
+    if (provider === 'local-rag') {
+      return true;
+    }
+
     if (!apiKey || typeof apiKey !== 'string') {
       return false;
     }

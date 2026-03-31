@@ -223,6 +223,21 @@
             font-size: 0.88rem;
             margin-bottom: 1rem;
         }
+        .status-banner.success {
+            background: #e9f7ee;
+            border-color: #b7e4c7;
+            color: #166534;
+        }
+        .status-banner.error {
+            background: #fff1f2;
+            border-color: #fecdd3;
+            color: #9f1239;
+        }
+        .status-banner.loading {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
         
         .back-link {
             display: inline-flex;
@@ -288,6 +303,13 @@
             <div class="form-group">
                 <label>Fournisseur IA</label>
                 <div class="provider-cards">
+                    <div class="provider-card" data-provider="local-rag">
+                        <h3>
+                            <i class="material-icons">auto_stories</i>
+                            Mode local RAG
+                        </h3>
+                        <p>Réponse locale basée uniquement sur vos documents indexés (ChromaDB), sans clé API.</p>
+                    </div>
                     <div class="provider-card" data-provider="openai">
                         <h3>
                             <i class="material-icons">psychology</i>
@@ -353,8 +375,10 @@
     <!-- Service client pour un fallback localStorage quand Supabase n'est pas disponible -->
     <script src="config-client.js"></script>
     <script>
-        let selectedProvider = 'openai';
+        let selectedProvider = 'local-rag';
         const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
+        const apiKeyField = document.getElementById('apiKey');
+        const apiKeyGroup = apiKeyField.closest('.form-group');
         
         // Sélection du fournisseur
         document.querySelectorAll('.provider-card').forEach(card => {
@@ -362,6 +386,14 @@
                 document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 selectedProvider = card.dataset.provider;
+                if (selectedProvider === 'local-rag') {
+                    apiKeyField.removeAttribute('required');
+                    apiKeyGroup.style.opacity = '0.6';
+                    document.getElementById('statusBanner').textContent = 'Mode local RAG activé: aucune clé API n’est nécessaire.';
+                } else {
+                    apiKeyField.setAttribute('required', 'required');
+                    apiKeyGroup.style.opacity = '1';
+                }
             });
         });
 
@@ -398,11 +430,28 @@
         }
 
         // Afficher le message de validation
-        function showValidationMessage(message, isSuccess) {
+        function getActionableMessage(result) {
+            if (!result || !result.code) {
+                return result?.message || 'Erreur inconnue';
+            }
+            const map = {
+                SUPABASE_NOT_CONFIGURED: 'Supabase non configuré côté serveur. Vérifiez SUPABASE_URL et SUPABASE_ANON_KEY.',
+                SUPABASE_TABLE_MISSING: 'Table user_configs introuvable dans Supabase. Créez la table et ses colonnes.',
+                SUPABASE_POLICY_DENIED: 'Accès refusé par les policies RLS Supabase. Vérifiez les policies de lecture/écriture.',
+                SUPABASE_SCHEMA_MISMATCH: 'Schéma Supabase incompatible. Colonnes attendues: user_id, api_key, provider, updated_at.',
+                INVALID_API_KEY_FORMAT: 'Format de clé API invalide pour le fournisseur sélectionné.',
+                VALIDATION_ERROR: 'Champs manquants. Vérifiez l’ID utilisateur et la clé API.'
+            };
+            return map[result.code] || result.message || 'Erreur côté serveur.';
+        }
+
+        function showValidationMessage(message, isSuccess, variant = null) {
             const messageDiv = document.getElementById('validationMessage');
             messageDiv.className = `validation-message ${isSuccess ? 'success' : 'error'}`;
             messageDiv.textContent = message;
-            document.getElementById('statusBanner').textContent = message;
+            const banner = document.getElementById('statusBanner');
+            banner.textContent = message;
+            banner.className = 'status-banner ' + (variant || (isSuccess ? 'success' : 'error'));
             
             setTimeout(() => {
                 messageDiv.textContent = '';
@@ -418,22 +467,26 @@
             const userId = document.getElementById('userId').value.trim();
             const saveButton = document.getElementById('saveButton');
             
-            if (!apiKey || !userId) {
-                showValidationMessage('Veuillez entrer une clé API et un ID utilisateur', false);
+            if (!userId || (selectedProvider !== 'local-rag' && !apiKey)) {
+                showValidationMessage('Veuillez entrer un ID utilisateur et, si nécessaire, une clé API', false);
                 return;
             }
 
             // Désactiver le bouton et afficher le chargement
             saveButton.disabled = true;
             saveButton.innerHTML = '<div class="loading"></div> Sauvegarde en cours...';
+            document.getElementById('statusBanner').textContent = 'Validation puis sauvegarde en cours...';
+            document.getElementById('statusBanner').className = 'status-banner loading';
 
             // Validation
-            const validation = await validateApiKey(apiKey, selectedProvider);
-            if (!validation.isValid) {
-                showValidationMessage(validation.message, false);
-                saveButton.disabled = false;
-                saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
-                return;
+            if (selectedProvider !== 'local-rag') {
+                const validation = await validateApiKey(apiKey, selectedProvider);
+                if (!validation.isValid) {
+                    showValidationMessage(getActionableMessage(validation), false);
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
+                    return;
+                }
             }
 
             // Sauvegarde dans Supabase
@@ -443,7 +496,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ apiKey, provider: selectedProvider, userId })
+                    body: JSON.stringify({ apiKey: apiKey || '', provider: selectedProvider, userId })
                 });
 
                 const result = await response.json();
@@ -457,16 +510,26 @@
                     }, 2000);
                 } else {
                     // Si Supabase est en erreur, fallback localStorage
-                    if ((result.code === 'SUPABASE_NOT_READY' || result.code === 'SUPABASE_SAVE_FAILED') && clientConfigService) {
+                    if ((result.code || '').startsWith('SUPABASE_') && clientConfigService) {
                         const savedLocally = await clientConfigService.saveConfig(apiKey, selectedProvider);
                         if (savedLocally) {
                             localStorage.setItem('devops-user-id', userId);
-                            showValidationMessage('Supabase indisponible ou refus de sauvegarde : configuration sauvegardée localement sur cet appareil.', true);
+                            showValidationMessage('Mode dégradé actif: sauvegarde locale effectuée (IndexedDB).', true, 'loading');
                         } else {
                             showValidationMessage('Supabase indisponible et échec de la sauvegarde locale.', false);
                         }
                     } else {
-                        showValidationMessage('Erreur lors de la sauvegarde: ' + result.message, false);
+                        const actionable = getActionableMessage(result);
+                        if (clientConfigService) {
+                            const savedLocally = await clientConfigService.saveConfig(apiKey, selectedProvider);
+                            if (savedLocally) {
+                                showValidationMessage(`${actionable} Basculé en sauvegarde locale (IndexedDB).`, true, 'loading');
+                            } else {
+                                showValidationMessage('Erreur lors de la sauvegarde: ' + actionable, false);
+                            }
+                        } else {
+                            showValidationMessage('Erreur lors de la sauvegarde: ' + actionable, false);
+                        }
                     }
                 }
                 } catch (error) {
@@ -510,7 +573,7 @@
                         document.getElementById('apiKey').value = '';
                         showValidationMessage('Configuration effacée avec succès', true);
                     } else {
-                        if ((result.code === 'SUPABASE_NOT_READY' || result.code === 'SUPABASE_SAVE_FAILED') && clientConfigService) {
+                        if ((result.code || '').startsWith('SUPABASE_') && clientConfigService) {
                             await clientConfigService.clearConfig();
                             document.getElementById('currentConfig').style.display = 'none';
                             document.getElementById('apiKey').value = '';
@@ -581,8 +644,13 @@
 
         // Initialisation
         document.addEventListener('DOMContentLoaded', () => {
-            // Sélectionner OpenAI par défaut
-            document.querySelector('[data-provider="openai"]').classList.add('selected');
+            // Sélectionner mode local-rag par défaut
+            const defaultCard = document.querySelector('[data-provider="local-rag"]');
+            if (defaultCard) {
+                defaultCard.classList.add('selected');
+            }
+            apiKeyField.removeAttribute('required');
+            apiKeyGroup.style.opacity = '0.6';
             
             // Pré-remplir l'ID utilisateur depuis le localStorage
             const savedUserId = localStorage.getItem('devops-user-id');
@@ -590,6 +658,7 @@
                 document.getElementById('userId').value = savedUserId;
                 loadExistingConfig();
             }
+            document.getElementById('statusBanner').className = 'status-banner';
             
             // Charger la configuration si l'ID utilisateur change
             document.getElementById('userId').addEventListener('blur', loadExistingConfig);

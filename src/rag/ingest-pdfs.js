@@ -9,6 +9,16 @@ const DATA_DIR = process.env.RAG_DATA_DIR || 'D:/Dev/Projet_fil/data_course';
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
 const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
 const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 120);
+const CHROMA_HOST = process.env.CHROMA_HOST || '127.0.0.1';
+const CHROMA_PORT = Number(process.env.CHROMA_PORT || 8000);
+const CHROMA_SSL = process.env.CHROMA_SSL === 'true';
+const CHROMA_URL = process.env.CHROMA_URL || '';
+
+function getChromaPath() {
+  if (CHROMA_URL) return CHROMA_URL;
+  const protocol = CHROMA_SSL ? 'https' : 'http';
+  return `${protocol}://${CHROMA_HOST}:${CHROMA_PORT}`;
+}
 
 function chunkText(text, chunkSize = 1800, overlap = 250) {
   const chunks = [];
@@ -77,7 +87,9 @@ async function main() {
 
   console.log(`📄 ${pdfFiles.length} PDF trouvés`);
 
-  const client = new ChromaClient({ path: 'http://localhost:8000' });
+  const chromaPath = getChromaPath();
+  console.log('Endpoint Chroma:', chromaPath);
+  const client = new ChromaClient({ path: chromaPath });
 
   // Assurer la collection
   let collection;
