@@ -31,6 +31,9 @@ describe('API Tests', () => {
       expect(response.body.services).toHaveProperty('command-engine', 'active');
       expect(response.body.services).toHaveProperty('monitor', 'active');
       expect(response.body.services).toHaveProperty('notification', 'active');
+      expect(response.body).toHaveProperty('rag');
+      expect(response.body.rag).toHaveProperty('enabled');
+      expect(response.body.rag).toHaveProperty('chromaUrlConfigured');
     });
   });
 

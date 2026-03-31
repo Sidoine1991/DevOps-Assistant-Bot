@@ -87,6 +87,11 @@ app.get('/api/bot/status', async (req, res) => {
       sockets: io.engine.clientsCount,
       authenticated: connectedUserIds.size
     },
+    rag: {
+      enabled: !!(aiService.retrievalService && aiService.retrievalService.enabled),
+      collection: process.env.RAG_COLLECTION || 'devops_courses',
+      chromaUrlConfigured: !!(process.env.CHROMA_URL && String(process.env.CHROMA_URL).trim()),
+    },
   });
 });
 

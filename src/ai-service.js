@@ -107,7 +107,15 @@ class AIService {
       // Mode local RAG: répond sans clé API, directement depuis les extraits.
       if (context.preferLocalRag === true || provider === 'local-rag') {
         if (!ragChunks || ragChunks.length === 0) {
-          const fallback = `📚 Mode local RAG actif, mais aucun document pertinent n'a été trouvé (ou le moteur RAG est indisponible). ${this.getFallbackResponse(normalizedQuestion)}`;
+          const ragUp = this.retrievalService && this.retrievalService.enabled;
+          const hintNoChroma =
+            '📚 **Chroma / RAG indisponible sur ce serveur.** Sur Render (ou tout hébergeur distant), `127.0.0.1` ne pointe pas vers votre PC. ' +
+            'Créez un service **Chroma** (Docker) séparé, définissez `CHROMA_URL=https://votre-chroma.onrender.com`, redéployez l’app, puis ingérez les PDF depuis votre machine : `CHROMA_URL=… npm run rag:ingest`. ' +
+            'Vous pouvez aussi configurer **Gemini** ou **OpenAI** dans la page Configuration pour des réponses sans RAG documentaire.';
+          const hintEmpty =
+            '📚 **RAG connecté** mais aucun extrait ne correspond à cette question (base vide ou requête trop vague). ' +
+            'Vérifiez l’ingestion (`npm run rag:ingest` vers la même `CHROMA_URL` et collection `RAG_COLLECTION`), ou reformulez avec du contexte (outil, erreur, objectif).';
+          const fallback = `${ragUp ? hintEmpty : hintNoChroma}\n\n${this.getFallbackResponse(normalizedQuestion)}`;
           return this.appendSources(fallback, grounding.sources);
         }
         return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
