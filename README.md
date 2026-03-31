@@ -40,14 +40,20 @@ Cette approche est pensée pour les contextes à connectivité variable et pour 
 ### Logo application
 ![Logo DevOps Assistant](media/Logo%20du%20bot%20DevOps%20Assistant.png)
 
-### Écran d'accueil / connexion
-![Capture accueil](media/capt1.jpeg)
+### Écran d'accueil
+![Capture accueil](media/capt1.png)
 
-### Conversation bot
-![Capture chat](media/capt2.jpeg)
+### Écran de connexion
+![Capture connexion](media/capt1.jpeg)
+
+### Présentation de l'application
+![Capture présentation](media/capt1.png)
+
+### Conversation (chatbot)
+![Capture chat](media/capt4.png)
 
 ### Configuration IA / RAG
-![Capture configuration](media/capt3.jpeg)
+![Capture configuration](media/capt3.png)
 
 ## Architecture globale (Mermaid)
 
