@@ -45,3 +45,6 @@ postgres_data/
 # Temporary files
 tmp/
 temp/
+
+# Other local projects
+HumanLink/
