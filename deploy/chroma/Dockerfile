@@ -1,13 +1,14 @@
-# ChromaDB pour Render : même stack que l'image officielle (uvicorn + chromadb.app:app),
-# avec le PORT injecté par Render (obligatoire sur la plateforme).
-# Persistance : par défaut sous /chroma/chroma dans l'image (voir docker-compose officiel Chroma).
-# Sur plan Render gratuit, le filesystem est éphémère.
+# Image chromadb/chroma récente : ENTRYPOINT = binaire `chroma` (CLI Rust).
+# Sans ENTRYPOINT [], Docker exécute `chroma <CMD>` ; un CMD en forme shell devient
+# `chroma sh -c ...` → erreur "unrecognized subcommand 'sh'".
 #
-# Ne pas utiliser `chroma run` ici : l'ENTRYPOINT parent est /docker_entrypoint.sh ; un CMD
-# qui le remplace par `chroma run` casse le démarrage (échec health check / crash).
-FROM chromadb/chroma:1.5.5
+# Render injecte PORT ; `chroma run` doit écouter sur ce port.
+# Persistance sous /data (éphémère sur plan gratuit Render).
+FROM chromadb/chroma:latest
 
-COPY deploy/chroma/render-entrypoint.sh /render-entrypoint.sh
-RUN chmod +x /render-entrypoint.sh
+ENTRYPOINT []
 
-ENTRYPOINT ["/render-entrypoint.sh"]
+ENV CHROMA_LISTEN_ADDRESS=0.0.0.0
+ENV CHROMA_PERSIST_PATH=/data
+
+CMD ["sh", "-c", "exec chroma run --path /data --port ${PORT:-8000}"]

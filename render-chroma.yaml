@@ -10,6 +10,7 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
+    dockerContext: .
     dockerfilePath: ./deploy/chroma/Dockerfile
     healthCheckPath: /api/v2/heartbeat
     autoDeploy: true
