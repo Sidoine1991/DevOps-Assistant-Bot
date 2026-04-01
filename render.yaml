@@ -1,8 +1,18 @@
+# Blueprint complet : Chroma (Docker) + app Node.
+# Render → New → Blueprint → repo → ce fichier (render.yaml à la racine).
+# CHROMA_URL est injectée automatiquement depuis le service "chromadb".
+#
+# Plan free : pas de facturation Render pour ces instances (limites : mise en veille, pas de disque persistant).
+# plan: starter = payant → Render demande une carte. Pour éviter ça, on utilise free ci-dessous.
+# Si Render exige quand même une carte : vérifier les conditions du compte sur render.com/docs (parfois vérif anti-abus).
+#
+# Si tu ne veux déployer que Chroma au début : utilise render-chroma.yaml à la place.
+
 services:
   - type: web
     name: chromadb
     runtime: docker
-    plan: starter
+    plan: free
     region: frankfurt
     dockerfilePath: ./deploy/chroma/Dockerfile
     healthCheckPath: /api/v2/heartbeat
@@ -11,7 +21,7 @@ services:
   - type: web
     name: devops-assistant-bot
     env: node
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start

@@ -1,17 +1,14 @@
-# Blueprint minimal : uniquement ChromaDB (à déployer en premier sur un nouveau compte Render).
-# Dashboard → New → Blueprint → connecter ce dépôt → fichier render-chroma.yaml
-#
-# Après déploiement : copiez l’URL publique du service (https://chromadb-….onrender.com)
-# et utilisez-la comme CHROMA_URL pour l’app Node (ou le blueprint complet render.yaml).
-#
-# Disque persistant : non inclus (non disponible sur l’offre gratuite). Pour activer un disque,
-# dans Render → service chromadb → Disks → Add disk, mount path /data, puis redéployer.
+# Chroma SEUL (pas l’app Node). Si tout d’un coup : utiliser render.yaml à la racine.
+# Blueprint : New → Blueprint → repo → chemin du fichier : render-chroma.yaml
+# Puis sur l’app Node : CHROMA_URL = https://chromadb-….onrender.com (copiée depuis le dashboard).
+# plan: free — gratuit Render (limites : veille, filesystem éphémère). starter = payant + carte.
+# Disque persistant : réservé aux plans payants — sur free, données Chroma perdues au redémarrage.
 
 services:
   - type: web
     name: chromadb
     runtime: docker
-    plan: starter
+    plan: free
     region: frankfurt
     dockerfilePath: ./deploy/chroma/Dockerfile
     healthCheckPath: /api/v2/heartbeat
