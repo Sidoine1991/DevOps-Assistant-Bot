@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChromaDB Service - DevOps Assistant</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            text-align: center;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            margin-bottom: 30px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            background: #4caf50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        .service-info {
+            background: #f5f5f5;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        .api-endpoints {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .api-endpoints h3 {
+            color: #e65100;
+            margin-top: 0;
+        }
+        .endpoint {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+            display: block;
+        }
+        .connected-bot {
+            background: #e3f2fd;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .bot-url {
+            color: #1976d2;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .bot-url:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status">
+            <div class="status-dot"></div>
+            ChromaDB Service Actif
+        </div>
+        
+        <h1>🤖 ChromaDB Vector Database</h1>
+        <p>Service de base de données vectorielle pour le DevOps Assistant Bot</p>
+        
+        <div class="service-info">
+            <div class="info-item">
+                <span>Service</span>
+                <span><strong>ChromaDB</strong></span>
+            </div>
+            <div class="info-item">
+                <span>Version</span>
+                <span>Latest</span>
+            </div>
+            <div class="info-item">
+                <span>Port</span>
+                <span>8000</span>
+            </div>
+            <div class="info-item">
+                <span>Collection</span>
+                <span>devops_courses</span>
+            </div>
+            <div class="info-item">
+                <span>Host</span>
+                <span>0.0.0.0</span>
+            </div>
+        </div>
+        
+        <div class="api-endpoints">
+            <h3>📡 Endpoints API disponibles</h3>
+            <div class="endpoint">GET /api/v2/heartbeat</div>
+            <div class="endpoint">GET /api/v2/collections</div>
+            <div class="endpoint">POST /api/v2/collections</div>
+            <div class="endpoint">POST /api/v2/collections/{id}/add</div>
+            <div class="endpoint">POST /api/v2/collections/{id}/query</div>
+        </div>
+        
+        <div class="connected-bot">
+            <h3>🔗 Bot connecté</h3>
+            <p>Ce service ChromaDB est utilisé par :</p>
+            <a href="https://devops-assistant-bot-1wcp.onrender.com" class="bot-url" target="_blank">
+                https://devops-assistant-bot-1wcp.onrender.com
+            </a>
+        </div>
+        
+        <div style="margin-top: 30px; color: #666; font-size: 0.9rem;">
+            <p>Déployé sur Render • Service actif 24/7</p>
+        </div>
+    </div>
+
+    <script>
+        // Test de connexion au heartbeat
+        fetch('/api/v2/heartbeat')
+            .then(response => response.json())
+            .then(data => {
+                console.log('ChromaDB heartbeat:', data);
+                document.querySelector('.status').innerHTML = 
+                    '<div class="status-dot"></div> ChromaDB Service Actif • ' + 
+                    new Date().toLocaleTimeString();
+            })
+            .catch(error => {
+                console.error('Erreur heartbeat:', error);
+                document.querySelector('.status').innerHTML = 
+                    '<div class="status-dot" style="background: #f44336;"></div> Erreur de connexion';
+            });
+    </script>
+</body>
+</html>

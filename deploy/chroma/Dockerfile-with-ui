@@ -1,0 +1,18 @@
+# Image ChromaDB avec interface web
+FROM chromadb/chroma:latest
+
+# Installer Python pour le serveur web
+RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
+
+# Copier les fichiers de l'interface web
+COPY deploy/chroma/ /app/
+
+# Créer le répertoire de données
+RUN mkdir -p /data
+
+# Permissions
+RUN chmod +x /app/server.py
+
+# Démarrer le serveur web avec ChromaDB en arrière-plan
+WORKDIR /app
+CMD ["python3", "server.py"]

@@ -11,4 +11,11 @@ ENTRYPOINT []
 
 ENV CHROMA_PERSIST_PATH=/data
 
-CMD ["sh", "-c", "exec chroma run --path /data --host 0.0.0.0 --port 8000"]
+# Copier une page HTML simple pour le statut
+COPY deploy/chroma/index.html /index.html
+
+# Script de démarrage qui lance ChromaDB et crée une page de redirection
+COPY deploy/chroma/start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
