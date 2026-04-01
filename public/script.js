@@ -4,6 +4,11 @@ let startTime = Date.now();
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
 let currentConversationId = null;
 let conversations = [];
+let isUserVerified = localStorage.getItem('devops-user-verified') === 'true';
+let pendingAttachments = [];
+let attachmentInput = document.getElementById('attachmentInput');
+let attachmentPreview = document.getElementById('attachmentPreview');
+let attachButton = document.getElementById('attachButton');
 
 // Sauvegarder l'ID utilisateur pour la session
 localStorage.setItem('devops-user-id', userId);
@@ -224,6 +229,91 @@ class ConversationManager {
 
 // Initialiser le gestionnaire de conversations
 const conversationManager = new ConversationManager();
+
+// Fonctions de notification
+function showNotification(message, type = 'info') {
+    // Créer une notification simple
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : '#2196f3'};
+        color: white;
+        border-radius: 8px;
+        z-index: 9999;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-suppression après 3 secondes
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Ajouter les animations CSS si elles n'existent pas
+if (!document.getElementById('notification-styles')) {
+    const style = document.createElement('style');
+    style.id = 'notification-styles';
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Service de configuration client (fallback local)
+const clientConfigService = {
+    hasConfig: async function() {
+        return localStorage.getItem('devops-config') !== null;
+    },
+    
+    loadConfig: async function() {
+        try {
+            const config = localStorage.getItem('devops-config');
+            return config ? JSON.parse(config) : null;
+        } catch (error) {
+            console.error('Erreur chargement config locale:', error);
+            return null;
+        }
+    },
+    
+    saveConfig: async function(config) {
+        try {
+            localStorage.setItem('devops-config', JSON.stringify(config));
+            return true;
+        } catch (error) {
+            console.error('Erreur sauvegarde config locale:', error);
+            return false;
+        }
+    },
+    
+    clearConfig: async function() {
+        try {
+            localStorage.removeItem('devops-config');
+            return true;
+        } catch (error) {
+            console.error('Erreur suppression config locale:', error);
+            return false;
+        }
+    }
+};
 
 // Charger la configuration utilisateur depuis Supabase
 async function loadUserConfig() {
