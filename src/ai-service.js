@@ -108,6 +108,12 @@ class AIService {
       if (context.preferLocalRag === true || provider === 'local-rag') {
         if (!ragChunks || ragChunks.length === 0) {
           const ragUp = this.retrievalService && this.retrievalService.enabled;
+          if (this.isSmallTalk(normalizedQuestion)) {
+            return this.appendSources(
+              'Bonjour 👋 Je suis prêt à vous aider sur le DevOps (CI/CD, Docker, monitoring, Kubernetes, troubleshooting). Dites-moi votre objectif ou votre erreur.',
+              grounding.sources
+            );
+          }
           const hintNoChroma =
             '📚 **Chroma / RAG indisponible sur ce serveur.** Sur Render (ou tout hébergeur distant), `127.0.0.1` ne pointe pas vers votre PC. ' +
             'Créez un service **Chroma** (Docker) séparé, définissez `CHROMA_URL=https://votre-chroma.onrender.com`, redéployez l’app, puis ingérez les PDF depuis votre machine : `CHROMA_URL=… npm run rag:ingest`. ' +
@@ -306,6 +312,17 @@ class AIService {
       cleaned = cleaned.replace(pattern, replacement);
     }
     return cleaned;
+  }
+
+  isSmallTalk(message = '') {
+    const lower = String(message || '').trim().toLowerCase();
+    if (!lower) return true;
+    if (lower.length <= 3) return true;
+    const smallTalk = new Set([
+      'cc', 'coucou', 'salut', 'hello', 'hi', 'hey', 'bonjour', 'bonsoir',
+      'yo', 'svp', 'stp', 'merci', 'ok', 'oki', 'test'
+    ]);
+    return smallTalk.has(lower);
   }
 
   buildRetrievalQuery(question) {
