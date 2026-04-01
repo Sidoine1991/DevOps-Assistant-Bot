@@ -1,7 +1,11 @@
 const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const ChromaBackupManager = require('./chroma-backup-manager');
-const { normalizeChromaClientPath } = require('./chroma-client-url');
+const {
+  parseChromaConnection,
+  formatChromaConnectionSummary,
+  connectionKey,
+} = require('./chroma-client-url');
 
 class RetrievalService {
   constructor() {
@@ -22,34 +26,37 @@ class RetrievalService {
     this.backupManager = new ChromaBackupManager();
   }
 
-  getChromaPath() {
-    const raw = this.chromaUrl
-      ? this.chromaUrl
-      : `${this.chromaSsl ? 'https' : 'http'}://${this.chromaHost}:${this.chromaPort}`;
-
-    // Le serveur Chroma expose généralement l’API sous /api/v1
-    // (les clients JS ont besoin d’un basePath cohérent).
-    if (/\/api\/v\d+\/?$/.test(raw) || /\/api\/?$/.test(raw)) {
-      return raw.replace(/\/$/, '');
-    }
-    return `${raw.replace(/\/$/, '')}/api/v1`;
-  }
-
-  normalizeApiPath(rawUrl) {
-    if (!rawUrl) return '';
-    if (/\/api\/v\d+\/?$/.test(rawUrl) || /\/api\/?$/.test(rawUrl)) {
-      return rawUrl.replace(/\/$/, '');
-    }
-    return `${rawUrl.replace(/\/$/, '')}/api/v1`;
-  }
-
-  getCandidatePaths() {
-    const primary = this.getChromaPath();
-    const candidates = [primary];
+  getChromaClientCandidates() {
+    const primary = parseChromaConnection({
+      chromaUrl: this.chromaUrl,
+      chromaHost: this.chromaHost,
+      chromaPort: this.chromaPort,
+      chromaSsl: this.chromaSsl,
+    });
+    const list = [primary];
     if (this.chromaFallbackUrl) {
-      candidates.push(this.normalizeApiPath(this.chromaFallbackUrl));
+      const fb = parseChromaConnection({
+        chromaUrl: this.chromaFallbackUrl,
+        chromaHost: this.chromaHost,
+        chromaPort: this.chromaPort,
+        chromaSsl: this.chromaSsl,
+      });
+      if (connectionKey(fb) !== connectionKey(primary)) {
+        list.push(fb);
+      }
     }
-    return [...new Set(candidates)];
+    return list;
+  }
+
+  getChromaPath() {
+    return formatChromaConnectionSummary(
+      parseChromaConnection({
+        chromaUrl: this.chromaUrl,
+        chromaHost: this.chromaHost,
+        chromaPort: this.chromaPort,
+        chromaSsl: this.chromaSsl,
+      })
+    );
   }
 
   async initialize() {
@@ -59,18 +66,20 @@ class RetrievalService {
     }
 
     try {
-      const candidates = this.getCandidatePaths();
+      const candidates = this.getChromaClientCandidates();
       let connected = false;
       let lastError = null;
 
-      for (const chromaPath of candidates) {
+      for (const chromaArgs of candidates) {
         try {
-          this.client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
+          this.client = new ChromaClient(chromaArgs);
           this.collection = await this.client.getCollection({
             name: this.collectionName,
             embeddingFunction: this.embeddingFunction,
           });
-          console.log(`✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${chromaPath})`);
+          console.log(
+            `✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${formatChromaConnectionSummary(chromaArgs)})`
+          );
           connected = true;
           break;
         } catch (error) {
@@ -82,14 +91,16 @@ class RetrievalService {
         console.warn('RAG: tentative de restauration automatique depuis le backup zip...');
         const restored = await this.backupManager.restoreBackup();
         if (restored) {
-          for (const chromaPath of candidates) {
+          for (const chromaArgs of candidates) {
             try {
-              this.client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
+              this.client = new ChromaClient(chromaArgs);
               this.collection = await this.client.getCollection({
                 name: this.collectionName,
                 embeddingFunction: this.embeddingFunction,
               });
-              console.log(`✅ RAG restauré via backup puis reconnecté (${chromaPath})`);
+              console.log(
+                `✅ RAG restauré via backup puis reconnecté (${formatChromaConnectionSummary(chromaArgs)})`
+              );
               connected = true;
               break;
             } catch (error) {

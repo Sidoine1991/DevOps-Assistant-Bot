@@ -3,7 +3,7 @@ const path = require('path');
 const { PDFParse } = require('pdf-parse');
 const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
-const { normalizeChromaClientPath } = require('./chroma-client-url');
+const { parseChromaConnection, formatChromaConnectionSummary } = require('./chroma-client-url');
 
 require('dotenv').config();
 
@@ -18,17 +18,6 @@ const CHROMA_HOST = process.env.CHROMA_HOST || '127.0.0.1';
 const CHROMA_PORT = Number(process.env.CHROMA_PORT || 8000);
 const CHROMA_SSL = process.env.CHROMA_SSL === 'true';
 const CHROMA_URL = process.env.CHROMA_URL || '';
-
-function getChromaPath() {
-  const raw = CHROMA_URL
-    ? CHROMA_URL
-    : `${CHROMA_SSL ? 'https' : 'http'}://${CHROMA_HOST}:${CHROMA_PORT}`;
-
-  if (/\/api\/v\d+\/?$/.test(raw) || /\/api\/?$/.test(raw)) {
-    return raw.replace(/\/$/, '');
-  }
-  return `${raw.replace(/\/$/, '')}/api/v1`;
-}
 
 function chunkText(text, chunkSize = RAG_CHUNK_SIZE, overlap = RAG_CHUNK_OVERLAP) {
   const chunks = [];
@@ -84,10 +73,15 @@ async function main() {
 
   console.log(`📄 ${pdfFiles.length} PDF trouvés`);
 
-  const chromaPath = getChromaPath();
-  console.log('Endpoint Chroma:', chromaPath);
+  const chromaArgs = parseChromaConnection({
+    chromaUrl: CHROMA_URL,
+    chromaHost: CHROMA_HOST,
+    chromaPort: CHROMA_PORT,
+    chromaSsl: CHROMA_SSL,
+  });
+  console.log('Endpoint Chroma:', formatChromaConnectionSummary(chromaArgs));
   const embeddingFunction = getEmbeddingFunction();
-  const client = new ChromaClient({ path: normalizeChromaClientPath(chromaPath) });
+  const client = new ChromaClient(chromaArgs);
 
   // Assurer la collection
   let collection;
@@ -156,6 +150,11 @@ async function main() {
 
 main().catch((err) => {
   console.error('❌ Erreur ingestion RAG:', err);
+  if (/Failed to connect|ChromaConnectionError|ECONNREFUSED/i.test(String(err && err.message))) {
+    console.error(
+      '→ Vérifiez que Chroma tourne (local Docker ou service Render) et que CHROMA_URL / CHROMA_HOST+CHROMA_PORT pointent vers le bon hôte et port (sans /api/v1 dans l’URL).'
+    );
+  }
   process.exit(1);
 });
 
