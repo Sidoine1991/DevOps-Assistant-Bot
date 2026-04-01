@@ -9,10 +9,14 @@
     document.body.appendChild(s);
   }
   var base = (window.DEVOPS_API_BASE || '').replace(/\/$/, '');
-  var socketSrc = base ? base + '/socket.io/socket.io.js' : '/socket.io/socket.io.js';
+  function withBase(path) {
+    if (!base) return path;
+    return base + (path.charAt(0) === '/' ? path : '/' + path);
+  }
+  var socketSrc = withBase('/socket.io/socket.io.js');
   loadScript(socketSrc, function () {
-    loadScript('config-client.js', function () {
-      loadScript('script.js');
+    loadScript(withBase('/config-client.js'), function () {
+      loadScript(withBase('/script.js'));
     });
   });
 })();

@@ -1,5 +1,8 @@
-// Connexion WebSocket au serveur
-const socket = io();
+// Connexion WebSocket au serveur (compatible front/back séparés)
+const socketBase = (window.DEVOPS_API_BASE || '').trim();
+const socket = socketBase
+    ? io(socketBase, { transports: ['websocket', 'polling'] })
+    : io({ transports: ['websocket', 'polling'] });
 let startTime = Date.now();
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
 let currentConversationId = null;
@@ -678,6 +681,7 @@ function addMessage(text, sender, timestamp, sources = []) {
             sourcesDiv.appendChild(sourceItem);
         });
         content.appendChild(sourcesDiv);
+        const actionWrap = document.createElement('div');
         actionWrap.className = 'message-actions';
         const copyBtn = document.createElement('button');
         copyBtn.type = 'button';
@@ -798,6 +802,12 @@ async function initChatApp() {
     if (socket.connected) {
         updateStatus('online');
     }
+    // Attacher tôt pour garder les actions UI utilisables même si l'API est lente/indisponible.
+    sendButton.addEventListener('click', sendMessage);
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+    }
     // Focus sur l'input
     messageInput.focus();
     
@@ -811,12 +821,7 @@ async function initChatApp() {
     setInterval(updateUptime, 60000); // Chaque minute
     setInterval(updateMetrics, 5000); // Chaque 5 secondes
     
-    // Gestion du bouton d'envoi
-    sendButton.addEventListener('click', sendMessage);
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logout);
-    }
+    // Les listeners d'envoi et logout sont déjà attachés plus haut.
     const exportBtn = document.getElementById('exportConversationBtn');
     if (exportBtn) exportBtn.addEventListener('click', exportConversation);
     const exportHtmlBtn = document.getElementById('exportConversationHtmlBtn');
