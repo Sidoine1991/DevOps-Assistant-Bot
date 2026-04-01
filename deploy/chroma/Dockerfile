@@ -1,5 +1,13 @@
-# ChromaDB pour Render : écoute sur $PORT (injecté par Render), persistance sous /data.
-# Sur le gratuit Render, /data est éphémère (perte au redémarrage). Pour un volume persistant,
-# ajoutez un disque Render (plan payant) monté sur /data dans le tableau de bord ou dans le blueprint.
-FROM chromadb/chroma:latest
-CMD ["sh", "-c", "exec dumb-init -- chroma run --path /data --host 0.0.0.0 --port ${PORT:-8000}"]
+# ChromaDB pour Render : même stack que l'image officielle (uvicorn + chromadb.app:app),
+# avec le PORT injecté par Render (obligatoire sur la plateforme).
+# Persistance : par défaut sous /chroma/chroma dans l'image (voir docker-compose officiel Chroma).
+# Sur plan Render gratuit, le filesystem est éphémère.
+#
+# Ne pas utiliser `chroma run` ici : l'ENTRYPOINT parent est /docker_entrypoint.sh ; un CMD
+# qui le remplace par `chroma run` casse le démarrage (échec health check / crash).
+FROM chromadb/chroma:1.5.5
+
+COPY deploy/chroma/render-entrypoint.sh /render-entrypoint.sh
+RUN chmod +x /render-entrypoint.sh
+
+ENTRYPOINT ["/render-entrypoint.sh"]
