@@ -1,11 +1,6 @@
-# Blueprint complet : Chroma (Docker) + app Node.
-# Render → New → Blueprint → repo → ce fichier (render.yaml à la racine).
+# Blueprint pour le bot DevOps Assistant uniquement
 # Utilise le service Chroma existant : https://chromadb-qow6.onrender.com
-
-#
-# Plan free : pas de facturation Render pour ces instances (limites : mise en veille, pas de disque persistant).
-# plan: starter = payant → Render demande une carte. Pour éviter ça, on utilise free ci-dessous.
-# Si Render exige quand même une carte : vérifier les conditions du compte sur render.com/docs (parfois vérif anti-abus).
+# Render → New → Blueprint → repo → render-bot-only.yaml
 
 services:
   - type: web
@@ -53,17 +48,3 @@ services:
         value: "1200"
       - key: RAG_INGEST_BATCH_SIZE
         value: "4"
-      - key: FRONTEND_ORIGINS
-        sync: false
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: SMTP_SECURE
-        value: "false"

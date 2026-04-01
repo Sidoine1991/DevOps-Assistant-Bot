@@ -11,4 +11,4 @@ ENTRYPOINT []
 
 ENV CHROMA_PERSIST_PATH=/data
 
-CMD ["sh", "-c", "exec chroma run --path /data --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "exec chroma run --path /data --host 0.0.0.0 --port 8000"]
