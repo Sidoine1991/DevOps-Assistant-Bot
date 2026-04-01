@@ -1,11 +1,9 @@
-// Connexion WebSocket (même origine ou DEVOPS_API_BASE si UI servie ailleurs)
-const backendOrigin = typeof window !== 'undefined' && window.DEVOPS_API_BASE ? window.DEVOPS_API_BASE : '';
-const socket = backendOrigin
-  ? io(backendOrigin, { transports: ['websocket', 'polling'] })
-  : io({ transports: ['websocket', 'polling'] });
+// Connexion WebSocket au serveur
+const socket = io();
 let startTime = Date.now();
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
-let isUserVerified = localStorage.getItem('devops-user-verified') === 'true';
+let currentConversationId = null;
+let conversations = [];
 
 // Sauvegarder l'ID utilisateur pour la session
 localStorage.setItem('devops-user-id', userId);
@@ -15,14 +13,217 @@ const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const uptimeElement = document.getElementById('uptime');
-const attachmentInput = document.getElementById('attachmentInput');
-const attachButton = document.getElementById('attachButton');
-const attachmentPreview = document.getElementById('attachmentPreview');
-const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
-let pendingAttachments = [];
+const newConversationBtn = document.getElementById('newConversationBtn');
+const clearConversationBtn = document.getElementById('clearConversationBtn');
+const conversationHistoryList = document.getElementById('conversationHistoryList');
 let conversationRows = [];
 let currentTranscript = [];
 let lastSentMessage = '';
+
+// Gestion des conversations
+class ConversationManager {
+    constructor() {
+        this.conversations = [];
+        this.currentConversationId = null;
+        this.loadConversations();
+    }
+
+    // Générer un ID de conversation unique
+    generateConversationId() {
+        return 'conv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Créer une nouvelle conversation
+    createNewConversation() {
+        const conversationId = this.generateConversationId();
+        const conversation = {
+            id: conversationId,
+            title: 'Nouvelle conversation',
+            messages: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        this.conversations.unshift(conversation);
+        this.currentConversationId = conversationId;
+        this.saveConversations();
+        this.clearChatMessages();
+        this.updateConversationHistory();
+        this.showConversationIndicator(conversationId);
+
+        return conversationId;
+    }
+
+    // Charger les conversations depuis localStorage
+    loadConversations() {
+        const saved = localStorage.getItem('conversations');
+        if (saved) {
+            try {
+                this.conversations = JSON.parse(saved);
+            } catch (error) {
+                console.error('Erreur chargement conversations:', error);
+                this.conversations = [];
+            }
+        }
+
+        // Si aucune conversation, en créer une
+        if (this.conversations.length === 0) {
+            this.createNewConversation();
+        } else {
+            // Charger la dernière conversation
+            this.currentConversationId = this.conversations[0].id;
+            this.loadConversation(this.currentConversationId);
+        }
+
+        this.updateConversationHistory();
+    }
+
+    // Sauvegarder les conversations dans localStorage
+    saveConversations() {
+        try {
+            localStorage.setItem('conversations', JSON.stringify(this.conversations));
+        } catch (error) {
+            console.error('Erreur sauvegarde conversations:', error);
+        }
+    }
+
+    // Charger une conversation spécifique
+    loadConversation(conversationId) {
+        const conversation = this.conversations.find(c => c.id === conversationId);
+        if (conversation) {
+            this.currentConversationId = conversationId;
+            this.clearChatMessages();
+            
+            // Recharger les messages
+            conversation.messages.forEach(msg => {
+                addMessage(msg.content, msg.type, msg.timestamp);
+            });
+
+            this.updateConversationHistory();
+            this.showConversationIndicator(conversationId);
+        }
+    }
+
+    // Ajouter un message à la conversation actuelle
+    addMessage(content, type, timestamp) {
+        if (!this.currentConversationId) {
+            this.createNewConversation();
+        }
+
+        const conversation = this.conversations.find(c => c.id === this.currentConversationId);
+        if (conversation) {
+            const message = { content, type, timestamp };
+            conversation.messages.push(message);
+            conversation.updatedAt = new Date().toISOString();
+            
+            // Mettre à jour le titre si c'est le premier message utilisateur
+            if (type === 'user' && conversation.messages.length === 1) {
+                conversation.title = content.substring(0, 30) + (content.length > 30 ? '...' : '');
+            }
+
+            this.saveConversations();
+            this.updateConversationHistory();
+        }
+    }
+
+    // Effacer la conversation actuelle
+    clearCurrentConversation() {
+        if (this.currentConversationId) {
+            const conversation = this.conversations.find(c => c.id === this.currentConversationId);
+            if (conversation) {
+                conversation.messages = [];
+                conversation.updatedAt = new Date().toISOString();
+                this.saveConversations();
+                this.clearChatMessages();
+                this.updateConversationHistory();
+            }
+        }
+    }
+
+    // Supprimer une conversation
+    deleteConversation(conversationId) {
+        const index = this.conversations.findIndex(c => c.id === conversationId);
+        if (index !== -1) {
+            this.conversations.splice(index, 1);
+            
+            if (this.currentConversationId === conversationId) {
+                if (this.conversations.length > 0) {
+                    this.loadConversation(this.conversations[0].id);
+                } else {
+                    this.createNewConversation();
+                }
+            }
+
+            this.saveConversations();
+            this.updateConversationHistory();
+        }
+    }
+
+    // Effacer tous les messages du chat
+    clearChatMessages() {
+        chatMessages.innerHTML = '';
+    }
+
+    // Mettre à jour l'affichage de l'historique
+    updateConversationHistory() {
+        conversationHistoryList.innerHTML = '';
+
+        this.conversations.forEach(conversation => {
+            const item = document.createElement('div');
+            item.className = 'conversation-item';
+            if (conversation.id === this.currentConversationId) {
+                item.classList.add('active');
+            }
+
+            const lastMessage = conversation.messages[conversation.messages.length - 1];
+            const preview = lastMessage ? lastMessage.content.substring(0, 50) + '...' : 'Aucun message';
+
+            item.innerHTML = `
+                <div class="conversation-item-title">${conversation.title}</div>
+                <div class="conversation-item-preview">${preview}</div>
+                <div class="conversation-item-time">${new Date(conversation.updatedAt).toLocaleString()}</div>
+                <div class="conversation-item-actions">
+                    <button onclick="conversationManager.deleteConversation('${conversation.id}')" title="Supprimer">
+                        <i class="material-icons">delete</i>
+                    </button>
+                </div>
+            `;
+
+            item.addEventListener('click', (e) => {
+                if (!e.target.closest('.conversation-item-actions')) {
+                    this.loadConversation(conversation.id);
+                }
+            });
+
+            conversationHistoryList.appendChild(item);
+        });
+    }
+
+    // Afficher l'indicateur de conversation actuelle
+    showConversationIndicator(conversationId) {
+        const conversation = this.conversations.find(c => c.id === conversationId);
+        if (conversation) {
+            // Ajouter un indicateur visuel de la conversation actuelle
+            const indicator = document.createElement('div');
+            indicator.className = 'conversation-indicator';
+            indicator.innerHTML = `
+                <i class="material-icons">chat</i>
+                ${conversation.title}
+            `;
+            
+            // Insérer au début des messages
+            const existingIndicator = chatMessages.querySelector('.conversation-indicator');
+            if (existingIndicator) {
+                existingIndicator.replaceWith(indicator);
+            } else {
+                chatMessages.insertBefore(indicator, chatMessages.firstChild);
+            }
+        }
+    }
+}
+
+// Initialiser le gestionnaire de conversations
+const conversationManager = new ConversationManager();
 
 // Charger la configuration utilisateur depuis Supabase
 async function loadUserConfig() {
@@ -77,6 +278,23 @@ async function loadConversationHistory() {
         console.error('Erreur chargement historique:', error);
         addMessage('🤖 Bonjour ! Je suis votre assistant DevOps.', 'bot', new Date().toISOString());
     }
+}
+
+// Gestionnaires d'événements pour les boutons de conversation
+if (newConversationBtn) {
+    newConversationBtn.addEventListener('click', () => {
+        conversationManager.createNewConversation();
+        showNotification('Nouvelle conversation créée', 'success');
+    });
+}
+
+if (clearConversationBtn) {
+    clearConversationBtn.addEventListener('click', () => {
+        if (confirm('Êtes-vous sûr de vouloir effacer la conversation actuelle ?')) {
+            conversationManager.clearCurrentConversation();
+            showNotification('Conversation effacée', 'success');
+        }
+    });
 }
 
 // Gestionnaires d'événements
@@ -342,46 +560,34 @@ function handleKeyPress(event) {
     }
 }
 
-// Ajout de message dans le chat
+// Ajouter un message au chat
 function addMessage(text, sender, timestamp, sources = []) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
     
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
-    avatar.innerHTML = sender === 'bot' 
-        ? '<i class="material-icons">smart_toy</i>'
-        : '<i class="material-icons">person</i>';
+    avatar.innerHTML = sender === 'user' ? '<i class="material-icons">person</i>' : '<i class="material-icons">smart_toy</i>';
     
     const content = document.createElement('div');
     content.className = 'message-content';
     
-    // Traitement du texte pour les emojis et formatage
-    const formattedText = formatMessage(text);
-    content.innerHTML = formattedText;
-    if (sender === 'bot' && Array.isArray(sources) && sources.length > 0) {
-        const sourceWrap = document.createElement('div');
-        sourceWrap.className = 'message-sources';
-        sourceWrap.innerHTML = '<strong>Sources:</strong>';
-        sources.forEach((source) => {
-            const line = document.createElement('div');
-            line.className = 'message-source-item';
-            if (source.url) {
-                const link = document.createElement('a');
-                link.href = source.url;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.textContent = source.title || source.url;
-                line.appendChild(link);
-            } else {
-                line.textContent = source.title || 'Source';
-            }
-            sourceWrap.appendChild(line);
+    // Convertir les sauts de ligne en <br>
+    const formattedText = text.replace(/\n/g, '<br>');
+    content.innerHTML = `<p>${formattedText}</p>`;
+    
+    // Ajouter les sources si présentes
+    if (sources && sources.length > 0) {
+        const sourcesDiv = document.createElement('div');
+        sourcesDiv.className = 'message-sources';
+        sourcesDiv.innerHTML = '<strong>Sources:</strong>';
+        sources.forEach(source => {
+            const sourceItem = document.createElement('div');
+            sourceItem.className = 'message-source-item';
+            sourceItem.innerHTML = `<a href="${source.url}" target="_blank">${source.title}</a>`;
+            sourcesDiv.appendChild(sourceItem);
         });
-        content.appendChild(sourceWrap);
-    }
-    if (sender === 'bot') {
-        const actionWrap = document.createElement('div');
+        content.appendChild(sourcesDiv);
         actionWrap.className = 'message-actions';
         const copyBtn = document.createElement('button');
         copyBtn.type = 'button';
