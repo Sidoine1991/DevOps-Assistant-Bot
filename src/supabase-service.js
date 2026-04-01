@@ -298,6 +298,29 @@ class SupabaseService {
     }
   }
 
+  async getUserKnowledgeChunksBySource(userId, sourceName, limit = 200) {
+    if (!this.client || !userId || !sourceName) return [];
+
+    try {
+      const { data, error } = await this.client
+        .from('user_knowledge_chunks')
+        .select('source_name, source_type, chunk_index, chunk_text, metadata, created_at')
+        .eq('user_id', userId)
+        .eq('source_name', sourceName)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      if (error && (error.code === '42P01' || error.code === 'PGRST205')) {
+        return [];
+      }
+      console.error('Erreur getUserKnowledgeChunksBySource:', error);
+      return [];
+    }
+  }
+
   async upsertUserByEmail(email, fullName = '') {
     if (!this.client || !email) return null;
     try {

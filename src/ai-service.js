@@ -469,7 +469,7 @@ class AIService {
       return this.appendSources(greet, externalSources);
     }
 
-    const relevant = this.extractRelevantSentences(message, ragChunks, 5);
+    const relevant = this.extractRelevantSentences(message, ragChunks, 10);
     const intent = this.detectIntent(message);
     if (relevant.length === 0) {
       const fallback = this.buildIntentFallback(intent);
@@ -492,7 +492,15 @@ class AIService {
             : 'Synthèse';
 
     const coreAnswer = this.buildIntentAnswer(intent, message);
-    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nÉléments pertinents extraits des documents:\n${bulletPoints}\n\nSources utilisees:\n- ${sources}`;
+    const recommendedActions = [
+      'Clarifier le périmètre (environnement, objectif métier, contraintes de sécurité).',
+      'Appliquer la pratique sur un petit cas pilote puis mesurer l’impact.',
+      'Automatiser les étapes répétitives (scripts, pipeline CI/CD, checks qualité).',
+      'Documenter le runbook opérationnel pour faciliter le support et l’onboarding.',
+      'Définir des métriques de suivi (fiabilité, délai de livraison, incidents).',
+      'Mettre en place une revue régulière et une amélioration continue.'
+    ].join('\n- ');
+    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nExplication détaillée:\nCette réponse est construite à partir des extraits documentaires retrouvés. Elle combine une définition opérationnelle, des points pratiques et des actions concrètes pour passer de la théorie à l’exécution.\n\nÉléments pertinents extraits des documents:\n${bulletPoints}\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.\n\nSources utilisees:\n- ${sources}`;
     return this.appendSources(ragAnswer, externalSources);
   }
 

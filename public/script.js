@@ -525,6 +525,45 @@ async function refreshConnectedUsers() {
     }
 }
 
+async function loadBotRuntimeStatus() {
+    try {
+        const res = await fetch(window.apiUrl('/api/bot/status'));
+        const status = await res.json();
+        if (!status || status.bot !== 'online') return;
+
+        const versionEl = document.getElementById('botVersion');
+        if (versionEl) {
+            versionEl.textContent = status.version || '-';
+        }
+
+        const servicesEl = document.getElementById('servicesCount');
+        if (servicesEl) {
+            const services = status.services && typeof status.services === 'object' ? status.services : {};
+            const activeCount = Object.values(services).filter((v) => v === 'active').length;
+            servicesEl.textContent = `${activeCount} actif${activeCount > 1 ? 's' : ''}`;
+        }
+
+        const aiStatusElement = document.getElementById('aiStatus');
+        const aiBadgeElement = document.getElementById('aiBadge');
+        if (aiStatusElement && aiBadgeElement) {
+            const ragEnabled = !!(status.rag && status.rag.enabled);
+            if (ragEnabled) {
+                aiStatusElement.textContent = '✅ mode local RAG';
+                aiStatusElement.style.color = '#4caf50';
+                aiBadgeElement.textContent = 'IA active: mode local RAG';
+                aiBadgeElement.className = 'ai-badge success';
+            } else if (status.hasAIConfig) {
+                aiStatusElement.textContent = '✅ provider cloud';
+                aiStatusElement.style.color = '#4caf50';
+                aiBadgeElement.textContent = 'IA active: Gemini/OpenAI';
+                aiBadgeElement.className = 'ai-badge success';
+            }
+        }
+    } catch (error) {
+        // silencieux: garde les valeurs déjà affichées
+    }
+}
+
 async function loadAccountOwner() {
     const accountOwner = document.getElementById('accountOwner');
     if (!accountOwner) return;
@@ -856,6 +895,8 @@ async function initChatApp() {
 
     await refreshConnectedUsers();
     setInterval(refreshConnectedUsers, 10000);
+    await loadBotRuntimeStatus();
+    setInterval(loadBotRuntimeStatus, 30000);
     await loadAccountOwner();
     
     // Mettre à jour le statut IA dans l'interface

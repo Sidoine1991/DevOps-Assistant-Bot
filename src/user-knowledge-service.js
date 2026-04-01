@@ -1,4 +1,5 @@
 const { PDFParse } = require('pdf-parse');
+const crypto = require('crypto');
 
 class UserKnowledgeService {
   constructor(supabaseService) {
@@ -87,6 +88,11 @@ class UserKnowledgeService {
     return q;
   }
 
+  buildAttachmentHash(attachment) {
+    const data = String(attachment?.data || '');
+    return crypto.createHash('sha256').update(data).digest('hex');
+  }
+
   async ingestAttachments(userId, attachments = []) {
     if (!userId || !Array.isArray(attachments) || attachments.length === 0) {
       return { ingestedChunks: 0, ingestedFiles: 0 };
@@ -96,6 +102,14 @@ class UserKnowledgeService {
     let ingestedFiles = 0;
 
     for (const attachment of attachments.slice(0, 6)) {
+      const sourceName = attachment.name || 'document';
+      const fileHash = this.buildAttachmentHash(attachment);
+      const existingForSource = await this.supabaseService.getUserKnowledgeChunksBySource(userId, sourceName, 400);
+      const alreadyIndexed = existingForSource.some((row) => row?.metadata?.file_hash === fileHash);
+      if (alreadyIndexed) {
+        continue;
+      }
+
       const text = await this.extractAttachmentText(attachment);
       if (!text || text.trim().length < 20) {
         continue;
@@ -108,13 +122,14 @@ class UserKnowledgeService {
 
       const rows = chunks.map((chunk, index) => ({
         user_id: userId,
-        source_name: attachment.name || 'document',
+        source_name: sourceName,
         source_type: attachment.type || 'application/octet-stream',
         chunk_index: index,
         chunk_text: chunk,
         metadata: {
           uploaded_at: new Date().toISOString(),
-          size: attachment.data?.length || 0
+          size: attachment.data?.length || 0,
+          file_hash: fileHash
         }
       }));
 
