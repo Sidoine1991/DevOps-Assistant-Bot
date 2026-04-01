@@ -73,10 +73,24 @@ class RetrievalService {
       for (const chromaArgs of candidates) {
         try {
           this.client = new ChromaClient(chromaArgs);
-          this.collection = await this.client.getCollection({
-            name: this.collectionName,
-            embeddingFunction: this.embeddingFunction,
-          });
+          try {
+            this.collection = await this.client.getCollection({
+              name: this.collectionName,
+              embeddingFunction: this.embeddingFunction,
+            });
+          } catch (collectionError) {
+            // Si la collection n'existe pas encore, on la crée pour activer le mode RAG.
+            const msg = String(collectionError && collectionError.message ? collectionError.message : collectionError);
+            if (/not found|does not exist|404/i.test(msg)) {
+              this.collection = await this.client.createCollection({
+                name: this.collectionName,
+                embeddingFunction: this.embeddingFunction,
+              });
+              console.log(`ℹ️ Collection Chroma créée: "${this.collectionName}"`);
+            } else {
+              throw collectionError;
+            }
+          }
           console.log(
             `✅ RAG initialisé avec la collection Chroma "${this.collectionName}" (${formatChromaConnectionSummary(chromaArgs)})`
           );
