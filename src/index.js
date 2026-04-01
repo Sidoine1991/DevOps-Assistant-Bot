@@ -67,7 +67,7 @@ app.get('/api/bot/status', async (req, res) => {
   res.json({ 
     bot: 'online', 
     version: '1.0.0',
-    hasAIConfig: process.env.OPENAI_API_KEY ? true : false,
+    hasAIConfig: !!(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY),
     database: {
       connected: dbConnected,
       type: 'Supabase',
@@ -421,8 +421,8 @@ io.on('connection', (socket) => {
 
       // Charger la configuration utilisateur depuis Supabase (clé non masquée côté serveur)
       let userConfig = null;
-      let apiKey = process.env.OPENAI_API_KEY;
-      let provider = 'local-rag';
+      let apiKey = '';
+      let provider = '';
 
       const serverSideConfig = await supabaseConfigService.getUserConfig(userId);
       if (serverSideConfig.success && serverSideConfig.data && serverSideConfig.data.apiKey) {
@@ -432,11 +432,28 @@ io.on('connection', (socket) => {
       } else if (serverSideConfig.success && serverSideConfig.data && serverSideConfig.data.provider === 'local-rag') {
         userConfig = serverSideConfig.data;
         provider = 'local-rag';
-      } else if (data.userConfigLocal && data.userConfigLocal.apiKey) {
+      } else if (data.userConfigLocal && (data.userConfigLocal.apiKey || data.userConfigLocal.provider === 'local-rag')) {
         // Fallback local: utilisé uniquement si Supabase n'a pas de config.
         userConfig = data.userConfigLocal;
-        apiKey = data.userConfigLocal.apiKey;
-        provider = data.userConfigLocal.provider || 'openai';
+        apiKey = data.userConfigLocal.apiKey || '';
+        provider = data.userConfigLocal.provider || '';
+      }
+
+      // Sélection automatique par défaut:
+      // - si RAG connecté: mode local-rag (offline/doc)
+      // - sinon: provider cloud disponible (Gemini puis OpenAI)
+      if (!provider) {
+        if (aiService.retrievalService && aiService.retrievalService.enabled) {
+          provider = 'local-rag';
+        } else if (process.env.GEMINI_API_KEY) {
+          provider = 'gemini';
+          apiKey = process.env.GEMINI_API_KEY;
+        } else if (process.env.OPENAI_API_KEY) {
+          provider = 'openai';
+          apiKey = process.env.OPENAI_API_KEY;
+        } else {
+          provider = 'local-rag';
+        }
       }
 
       const knowledgeContext = await knowledgeService.getGroundingContext(message);
@@ -449,7 +466,7 @@ io.on('connection', (socket) => {
       }
       const userKnowledgeContext = await userKnowledgeService.getContextForQuery(userId, message, 8);
 
-      if (userConfig && apiKey && provider !== 'local-rag') {
+      if (apiKey && provider !== 'local-rag') {
         if (provider === 'openai') {
           process.env.OPENAI_API_KEY = apiKey;
         } else if (provider === 'gemini') {
@@ -494,13 +511,11 @@ io.on('connection', (socket) => {
       socket.emit('response', { 
         message: response,
         timestamp: new Date().toISOString(),
-        bot: userConfig ? `DevOps Assistant AI (${provider.toUpperCase()})` : 'DevOps Assistant AI',
+        bot: `DevOps Assistant AI (${provider.toUpperCase()})`,
         sources: combinedSources
       });
       
-      if (userConfig) {
-        console.log(`Provider ${provider} configuré pour l'utilisateur ${userId}`);
-      }
+      console.log(`Provider ${provider} utilisé pour l'utilisateur ${userId}`);
       
     } catch (error) {
       console.error('Erreur lors du traitement du message:', error);
