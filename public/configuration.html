@@ -392,8 +392,8 @@
                 selectedProvider = card.dataset.provider;
                 if (selectedProvider === 'local-rag') {
                     apiKeyField.removeAttribute('required');
-                    apiKeyGroup.style.opacity = '0.6';
-                    document.getElementById('statusBanner').textContent = 'Mode local RAG activé: aucune clé API n’est nécessaire.';
+                    apiKeyGroup.style.opacity = '1';
+                    document.getElementById('statusBanner').textContent = 'Mode local RAG : les réponses viennent des documents (Chroma). Optionnel : une clé Gemini ou OpenAI sert de secours si le corpus est indisponible ou sans extrait pertinent.';
                 } else {
                     apiKeyField.setAttribute('required', 'required');
                     apiKeyGroup.style.opacity = '1';
@@ -483,7 +483,16 @@
             document.getElementById('statusBanner').className = 'status-banner loading';
 
             // Validation
-            if (selectedProvider !== 'local-rag') {
+            if (selectedProvider === 'local-rag' && apiKey) {
+                const validationGemini = await validateApiKey(apiKey, 'gemini');
+                const validationOpenAI = await validateApiKey(apiKey, 'openai');
+                if (!validationGemini.isValid && !validationOpenAI.isValid) {
+                    showValidationMessage('Clé de secours invalide : utilisez une clé Gemini ou OpenAI au bon format, ou laissez le champ vide.', false);
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
+                    return;
+                }
+            } else if (selectedProvider !== 'local-rag') {
                 const validation = await validateApiKey(apiKey, selectedProvider);
                 if (!validation.isValid) {
                     showValidationMessage(getActionableMessage(validation), false);

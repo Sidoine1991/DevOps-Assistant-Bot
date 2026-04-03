@@ -474,7 +474,22 @@ io.on('connection', (socket) => {
         }
         aiService.initializeProviders();
       }
-      
+
+      // Mode local-rag : clé optionnelle en base = secours cloud si Chroma ou corpus vide.
+      if (provider === 'local-rag' && userConfig && userConfig.apiKey && String(userConfig.apiKey).trim()) {
+        const k = String(userConfig.apiKey).trim();
+        if (k.startsWith('sk-')) {
+          process.env.OPENAI_API_KEY = k;
+        } else {
+          process.env.GEMINI_API_KEY = k;
+        }
+        aiService.initializeProviders();
+      }
+
+      if (provider === 'local-rag') {
+        aiService.initializeProviders();
+      }
+
       // Utiliser l'IA pour générer une réponse intelligente
       const response = await aiService.getDevOpsResponse(message, {
         userId,

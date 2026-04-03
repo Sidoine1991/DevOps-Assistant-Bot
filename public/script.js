@@ -525,7 +525,7 @@ async function refreshConnectedUsers() {
     }
 }
 
-async function loadBotRuntimeStatus() {
+async function loadBotRuntimeStatus(userConfig) {
     try {
         const res = await fetch(window.apiUrl('/api/bot/status'));
         const status = await res.json();
@@ -547,16 +547,35 @@ async function loadBotRuntimeStatus() {
         const aiBadgeElement = document.getElementById('aiBadge');
         if (aiStatusElement && aiBadgeElement) {
             const ragEnabled = !!(status.rag && status.rag.enabled);
-            if (ragEnabled) {
-                aiStatusElement.textContent = '✅ mode local RAG';
+            const hasCloud = !!status.hasAIConfig;
+            const wantsLocalRag = userConfig && userConfig.provider === 'local-rag';
+            const sourceLabel = userConfig && userConfig.source === 'local' ? ' (config locale)' : '';
+
+            if (ragEnabled && wantsLocalRag) {
+                aiStatusElement.textContent = '✅ mode local RAG' + sourceLabel;
                 aiStatusElement.style.color = '#4caf50';
-                aiBadgeElement.textContent = 'IA active: mode local RAG';
+                aiBadgeElement.textContent = 'IA active: mode local RAG' + sourceLabel;
                 aiBadgeElement.className = 'ai-badge success';
-            } else if (status.hasAIConfig) {
+            } else if (ragEnabled && !wantsLocalRag) {
+                aiStatusElement.textContent = '✅ RAG doc + provider configuré';
+                aiStatusElement.style.color = '#4caf50';
+                aiBadgeElement.textContent = 'IA active: RAG + ' + (userConfig && userConfig.provider ? userConfig.provider : 'cloud');
+                aiBadgeElement.className = 'ai-badge success';
+            } else if (!ragEnabled && wantsLocalRag && hasCloud) {
+                aiStatusElement.textContent = '⚠️ RAG doc indisponible — réponses cloud' + sourceLabel;
+                aiStatusElement.style.color = '#ff9800';
+                aiBadgeElement.textContent = 'IA: Gemini/OpenAI (serveur) — sans corpus RAG';
+                aiBadgeElement.className = 'ai-badge warning';
+            } else if (hasCloud) {
                 aiStatusElement.textContent = '✅ provider cloud';
                 aiStatusElement.style.color = '#4caf50';
                 aiBadgeElement.textContent = 'IA active: Gemini/OpenAI';
                 aiBadgeElement.className = 'ai-badge success';
+            } else if (wantsLocalRag) {
+                aiStatusElement.textContent = '⚠️ RAG indisponible — pas de clé cloud';
+                aiStatusElement.style.color = '#ff9800';
+                aiBadgeElement.textContent = 'Configurez Chroma ou une clé IA';
+                aiBadgeElement.className = 'ai-badge warning';
             }
         }
     } catch (error) {
@@ -895,30 +914,23 @@ async function initChatApp() {
 
     await refreshConnectedUsers();
     setInterval(refreshConnectedUsers, 10000);
-    await loadBotRuntimeStatus();
-    setInterval(loadBotRuntimeStatus, 30000);
     await loadAccountOwner();
-    
-    // Mettre à jour le statut IA dans l'interface
+
     const config = await loadUserConfig();
+    await loadBotRuntimeStatus(config);
+    setInterval(async () => {
+        const c = await loadUserConfig();
+        await loadBotRuntimeStatus(c);
+    }, 30000);
+
     const aiStatusElement = document.getElementById('aiStatus');
     const aiBadgeElement = document.getElementById('aiBadge');
-    if (config) {
-        const sourceLabel = config.source === 'local' ? ' (local)' : '';
-        const providerLabel = config.provider === 'local-rag' ? 'mode local RAG' : config.provider;
-        aiStatusElement.textContent = '✅ ' + providerLabel + sourceLabel;
-        aiStatusElement.style.color = '#4caf50';
-        if (aiBadgeElement) {
-            aiBadgeElement.textContent = `IA active: ${providerLabel}${sourceLabel}`;
-            aiBadgeElement.className = 'ai-badge success';
-        }
-    } else {
+    if (!config && aiStatusElement && aiBadgeElement) {
         aiStatusElement.textContent = '⚠️ Non configurée';
         aiStatusElement.style.color = '#ff9800';
-        if (aiBadgeElement) {
-            aiBadgeElement.textContent = 'IA non configurée';
-            aiBadgeElement.className = 'ai-badge warning';
-        }
+        aiBadgeElement.textContent = 'IA non configurée';
+        aiBadgeElement.className = 'ai-badge warning';
+        await loadBotRuntimeStatus(null);
     }
 }
 

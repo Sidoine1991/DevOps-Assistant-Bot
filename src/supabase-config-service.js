@@ -87,7 +87,9 @@ class SupabaseConfigService {
         ? {
             user_id: userId,
             provider: provider,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Clé optionnelle : secours Gemini/OpenAI si le RAG documentaire est indisponible.
+            api_key: apiKey && String(apiKey).trim() ? String(apiKey).trim() : null,
           }
         : {
             user_id: userId,
@@ -168,7 +170,11 @@ class SupabaseConfigService {
   // Valider la clé API (réutilise la même logique)
   validateApiKey(apiKey, provider) {
     if (provider === 'local-rag') {
-      return true;
+      if (!apiKey || !String(apiKey).trim()) return true;
+      const k = String(apiKey).trim();
+      const openaiOk = k.startsWith('sk-') && k.length >= 20;
+      const geminiOk = /^[A-Za-z0-9_-]{20,120}$/.test(k);
+      return openaiOk || geminiOk;
     }
 
     if (!apiKey || typeof apiKey !== 'string') {

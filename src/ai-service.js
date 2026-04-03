@@ -15,9 +15,15 @@ class AIService {
       fs.mkdirSync(this.generatedImageDir, { recursive: true });
     }
     this.initializeProviders();
+    this.retrievalService.initialize().catch((err) => {
+      console.error('Erreur initialisation retrieval service:', err);
+    });
   }
 
   initializeProviders() {
+    this.openai = null;
+    this.gemini = null;
+
     // Initialiser OpenAI
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey) {
@@ -51,11 +57,6 @@ class AIService {
     if (!this.openai && !this.gemini) {
       console.log('⚠️ Aucun provider IA disponible - Mode fallback activé');
     }
-
-    // Initialiser le service de RAG en arrière-plan
-    this.retrievalService.initialize().catch((err) => {
-      console.error('Erreur initialisation retrieval service:', err);
-    });
   }
 
   async getDevOpsResponse(message, context = {}) {
@@ -113,6 +114,18 @@ class AIService {
               'Bonjour 👋 Je suis prêt à vous aider sur le DevOps (CI/CD, Docker, monitoring, Kubernetes, troubleshooting). Dites-moi votre objectif ou votre erreur.',
               grounding.sources
             );
+          }
+          // Si le corpus RAG est vide ou Chroma est down, utiliser Gemini/OpenAI côté serveur quand c'est possible.
+          if (this.gemini || this.openai) {
+            const note = ragUp
+              ? 'Aucun extrait documentaire pertinent n’a été trouvé pour cette question.'
+              : 'Le RAG documentaire (Chroma) n’est pas disponible sur ce serveur.';
+            const cloudPrompt =
+              `${systemPrompt}\n\nNote (${note}) Réponds en français comme expert DevOps. Ne cite pas de documents PDF internes.`;
+            if (this.gemini) {
+              return await this.getGeminiResponse(message, cloudPrompt, attachments);
+            }
+            return await this.getOpenAIResponse(message, cloudPrompt);
           }
           const hintNoChroma =
             '📚 **Chroma / RAG indisponible sur ce serveur.** Sur Render (ou tout hébergeur distant), `127.0.0.1` ne pointe pas vers votre PC. ' +
