@@ -112,13 +112,30 @@ class AIService {
           if (this.isSmallTalk(normalizedQuestion)) {
             return this.appendSources(
               'Bonjour 👋 Je suis prêt à vous aider sur le DevOps (CI/CD, Docker, monitoring, Kubernetes, troubleshooting). Dites-moi votre objectif ou votre erreur.',
-              grounding.sources
+              []
             );
           }
-          const hintNoChroma =
+          const chromaUrlRaw = (process.env.CHROMA_URL && String(process.env.CHROMA_URL).trim()) || '';
+          const chromaLooksRemote =
+            /^https:\/\//i.test(chromaUrlRaw) && !/127\.0\.0\.1|localhost/i.test(chromaUrlRaw);
+          let chromaHostHint = chromaUrlRaw;
+          try {
+            chromaHostHint = new URL(chromaUrlRaw).hostname;
+          } catch (_) {
+            /* garder la chaîne brute */
+          }
+          const coll = process.env.RAG_COLLECTION || 'devops_courses';
+          const hintNoChromaLocal =
             '📚 **Chroma / RAG indisponible sur ce serveur.** Sur Render (ou tout hébergeur distant), `127.0.0.1` ne pointe pas vers votre PC. ' +
             'Créez un service **Chroma** (Docker) séparé, définissez `CHROMA_URL=https://votre-chroma.onrender.com`, redéployez l’app, puis ingérez les PDF depuis votre machine : `CHROMA_URL=… npm run rag:ingest`. ' +
             'Pour des réponses **sans** corpus documentaire, choisissez **Gemini** ou **OpenAI** dans la page Configuration.';
+          const hintNoChromaRemote =
+            `📚 **Chroma ne répond pas** depuis ce bot alors qu’une URL distante est configurée (\`${chromaHostHint}\`). ` +
+            'Vérifiez que le service Chroma est **démarré** sur Render (plan gratuit : réveillez-le), que le **déploiement** et le **health check** passent, et que la collection `' +
+            coll +
+            '` contient des données (`CHROMA_URL=… npm run rag:ingest` depuis votre machine). ' +
+            'Pour des réponses sans corpus documentaire, choisissez **Gemini** ou **OpenAI** dans Configuration.';
+          const hintNoChroma = chromaLooksRemote ? hintNoChromaRemote : hintNoChromaLocal;
           const hintEmpty =
             '📚 **RAG connecté** mais aucun extrait ne correspond à cette question (base vide ou requête trop vague). ' +
             'Vérifiez l’ingestion (`npm run rag:ingest` vers la même `CHROMA_URL` et collection `RAG_COLLECTION`), ou reformulez avec du contexte (outil, erreur, objectif).';
@@ -131,7 +148,7 @@ class AIService {
             body +=
               '\n\n_**Note :** en mode corpus documentaire seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
           }
-          return this.appendSources(body, grounding.sources);
+          return this.appendSources(body, []);
         }
         return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
       }
@@ -164,7 +181,7 @@ class AIService {
       if (context.preferLocalRag === true || context.provider === 'local-rag') {
         return this.appendSources(
           'Une erreur est survenue en mode RAG local. Vérifiez Chroma et les documents indexés, puis réessayez.',
-          context.knowledgeContext?.sources || []
+          []
         );
       }
       // Si OpenAI échoue (ex: invalid_api_key), tenter Gemini si disponible.
