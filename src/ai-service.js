@@ -465,7 +465,17 @@ class AIService {
       /\bvm\b/.test(q) ||
       q.includes('machine virtuelle');
     if (containerTopic || virtTopic) {
-      return `${question} docker conteneurisation container virtualisation hyperviseur machine virtuelle kubernetes image`;
+      let extra =
+        'docker conteneurisation container virtualisation hyperviseur machine virtuelle kubernetes image';
+      if (
+        /comment\b|mettre en place|installer|autonome|application|etapes?|deploi|deploy|creer|construi|execut|demarr|lancer|dockerfile|isol/.test(
+          q
+        )
+      ) {
+        extra +=
+          ' dockerfile docker build run docker-compose compose .dockerignore dependances port volume reseau environnement healthcheck registry image autonome isoler';
+      }
+      return `${question} ${extra}`;
     }
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) {
       return `${question} integration continue deploiement continu pipeline build test release`;
@@ -529,7 +539,28 @@ class AIService {
   }
 
   extractRelevantSentences(query, ragChunks, limit = 4) {
-    const queryTokens = this.tokenize(query);
+    const qNorm = this.stripAccents((query || '').toLowerCase());
+    const dockerishQuery = /docker|dockerfile|conteneur|container|image docker|kubernetes|\bk8s\b/.test(qNorm);
+    let queryTokens = this.tokenize(query);
+    if (dockerishQuery) {
+      const boost = [
+        'docker',
+        'dockerfile',
+        'image',
+        'conteneur',
+        'container',
+        'compose',
+        'application',
+        'dependances',
+        'autonome',
+        'build',
+        'registry',
+        'port',
+        'volume',
+      ];
+      queryTokens = [...new Set([...queryTokens, ...boost])];
+    }
+
     const scored = [];
 
     for (const chunk of ragChunks || []) {
@@ -546,6 +577,9 @@ class AIService {
         let score = 0;
         for (const token of queryTokens) {
           if (tokens.has(token)) score += 1;
+        }
+        if (dockerishQuery && /docker|dockerfile|conteneur|container|\bimage\b|compose|registry|ecr|kubernetes|pod|build|scanning container/i.test(sentence)) {
+          score += 3;
         }
         if (score > 0) {
           scored.push({ sentence, source, score });
@@ -594,6 +628,45 @@ class AIService {
     return true;
   }
 
+  /** Question du type « comment mettre en place … sur Docker » (procédurale, pas seulement définition). */
+  isDockerSetupQuestion(message = '') {
+    const q = this.stripAccents((message || '').toLowerCase());
+    const procedural =
+      /comment\b|mettre en place|installer|deploi|deploy|creer|construi|execut|demarr|lancer|etapes?|comment faire|how to|^pour\b/.test(
+        q
+      );
+    const dockerish = /docker|conteneur|dockerfile|image docker|\bimage\b.*docker|kubernetes|\bk8s\b/.test(q);
+    return procedural && dockerish;
+  }
+
+  /** Réponse directe et structurée pour une mise en place Docker (cadre la question « comment »). */
+  buildDockerSetupCoreAnswer() {
+    return (
+      '**Démarche pour une application autonome avec Docker**\n\n' +
+      '1. **Cible** : précisez le processus à exécuter (API, front, worker), le port d’écoute et les variables nécessaires.\n' +
+      '2. **Dockerfile** : image de base adaptée (ex. `node:22-alpine`, `python:3.12-slim`), copie du code, installation des dépendances, `EXPOSE`, `CMD` ou `ENTRYPOINT` pour lancer l’app.\n' +
+      '3. **`.dockerignore`** : exclure `node_modules`, `.git`, caches — builds plus rapides et images plus petites.\n' +
+      '4. **Build & run local** : `docker build -t monapp:local .` puis `docker run --rm -p 8080:8080 -e CLE=valeur monapp:local` (adapter ports et env).\n' +
+      '5. **Autonomie** : configuration et secrets via variables d’environnement ou fichiers montés, pas figés dans l’image ; en production, politique de redémarrage et healthcheck selon votre orchestrateur.\n' +
+      '6. **Plusieurs services** : un `docker-compose.yml` pour lier app, base de données et cache sur un réseau interne.\n' +
+      '7. **Industrialisation** : build de l’image en CI, push vers un registry, déploiement de la même étiquette d’image en recette puis production.\n\n' +
+      '_Les extraits ci-dessous viennent de vos cours : gardez ceux qui parlent explicitement de conteneurs, images ou registres ; les passages « cloud » génériques sont seulement du contexte._'
+    );
+  }
+
+  /** Favorise les phrases qui mentionnent Docker / conteneurs quand la question est orientée Docker. */
+  prioritizeDockerSnippets(relevant, message = '') {
+    if (!relevant || relevant.length === 0) return relevant;
+    const q = this.stripAccents((message || '').toLowerCase());
+    if (!/docker|dockerfile|conteneur|container/.test(q)) return relevant;
+    const dock = relevant.filter((r) =>
+      /docker|dockerfile|conteneur|container|\bimage\b|compose|registry|ecr|kubernetes|pod|scanning container|container image/i.test(
+        r.sentence
+      )
+    );
+    return dock.length >= 2 ? dock : relevant;
+  }
+
   buildIntentAnswer(intent, message) {
     switch (intent) {
       case 'containerization':
@@ -623,8 +696,12 @@ class AIService {
       return this.appendSources(greet, externalSources);
     }
 
-    const relevant = this.extractRelevantSentences(message, ragChunks, 10);
+    let relevant = this.extractRelevantSentences(message, ragChunks, 10);
     const intent = this.detectIntent(message);
+    const proceduralDocker = this.isDockerSetupQuestion(message) && intent === 'containerization';
+    if (proceduralDocker) {
+      relevant = this.prioritizeDockerSnippets(relevant, message);
+    }
     if (relevant.length === 0) {
       const fallback = this.buildIntentFallback(intent);
       return this.appendSources(`Je n'ai pas trouvé de passage suffisamment clair dans les documents pour cette question. ${fallback}`, externalSources);
@@ -635,17 +712,24 @@ class AIService {
       .join('\n');
     const sources = [...new Set(relevant.map((item) => item.source))].join(', ');
 
-    const intentLabel = intent === 'containerization'
-      ? 'Conteneurisation'
-      : intent === 'cicd'
-        ? 'CI/CD'
-        : intent === 'monitoring'
-          ? 'Monitoring'
-          : intent === 'devops'
-            ? 'Culture DevOps'
-            : 'Synthèse';
+    const intentLabel = proceduralDocker
+      ? 'Mise en place sur Docker'
+      : intent === 'containerization'
+        ? 'Conteneurisation'
+        : intent === 'cicd'
+          ? 'CI/CD'
+          : intent === 'monitoring'
+            ? 'Monitoring'
+            : intent === 'devops'
+              ? 'Culture DevOps'
+              : 'Synthèse';
 
-    const coreAnswer = this.buildIntentAnswer(intent, message);
+    const coreAnswer = proceduralDocker
+      ? this.buildDockerSetupCoreAnswer()
+      : this.buildIntentAnswer(intent, message);
+    const explanationBlock = proceduralDocker
+      ? '**Extraits des cours (complément)** — privilégiez les points qui citent Docker, images ou registres ; ignorez le reste si hors sujet.'
+      : 'Cette réponse est construite à partir des extraits documentaires retrouvés. Elle combine une définition opérationnelle, des points pratiques et des actions concrètes pour passer de la théorie à l’exécution.';
     const recommendedActions = [
       'Clarifier le périmètre (environnement, objectif métier, contraintes de sécurité).',
       'Appliquer la pratique sur un petit cas pilote puis mesurer l’impact.',
@@ -654,7 +738,7 @@ class AIService {
       'Définir des métriques de suivi (fiabilité, délai de livraison, incidents).',
       'Mettre en place une revue régulière et une amélioration continue.'
     ].join('\n- ');
-    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nExplication détaillée:\nCette réponse est construite à partir des extraits documentaires retrouvés. Elle combine une définition opérationnelle, des points pratiques et des actions concrètes pour passer de la théorie à l’exécution.\n\nÉléments pertinents extraits des documents:\n${bulletPoints}\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.\n\nSources utilisees:\n- ${sources}`;
+    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nExplication:\n${explanationBlock}\n\nÉléments issus des documents:\n${bulletPoints}\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.\n\nSources utilisees:\n- ${sources}`;
     return this.appendSources(ragAnswer, externalSources);
   }
 
