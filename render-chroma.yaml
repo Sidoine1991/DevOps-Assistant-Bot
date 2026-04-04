@@ -3,6 +3,12 @@
 # Puis sur l’app Node : CHROMA_URL = https://chromadb-….onrender.com (copiée depuis le dashboard).
 # plan: free — gratuit Render (limites : veille, filesystem éphémère). starter = payant + carte.
 # Disque persistant : réservé aux plans payants — sur free, données Chroma perdues au redémarrage.
+#
+# IMPORTANT (health check) : sur le dashboard Render → ce service → Settings → la valeur « Port » /
+# « Internal port » doit être la MÊME que celle sur laquelle Chroma écoute. Le script start.sh
+# utilise la variable PORT injectée par Render (souvent 10000 ou 3000). Si vous aviez une erreur
+# du type « :3000/api/v2/heartbeat » en timeout, soit alignez le port affiché dans Settings avec
+# celui du conteneur, soit redéployez après ce correctif (Chroma suit désormais $PORT).
 
 services:
   - type: web

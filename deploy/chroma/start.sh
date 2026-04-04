@@ -1,11 +1,14 @@
 #!/bin/bash
+set -e
 
-# Script de démarrage pour ChromaDB avec page de statut
-echo "🚀 Démarrage de ChromaDB avec interface web..."
+# Render (et autres PaaS) définissent PORT : le health check interne cible ce port.
+# Si Chroma écoute sur 8000 alors que Render attend 3000 → "Timed out ... :3000/api/v2/heartbeat".
+PORT_NUM="${PORT:-8000}"
+echo "🚀 Chroma écoute sur 0.0.0.0:${PORT_NUM} (PORT Render ou défaut 8000)"
 
 # Démarrer ChromaDB en arrière-plan
 echo "📊 Démarrage de ChromaDB..."
-chroma run --path /data --host 0.0.0.0 --port 8000 &
+chroma run --path /data --host 0.0.0.0 --port "${PORT_NUM}" &
 CHROMA_PID=$!
 
 # Attendre que ChromaDB soit prêt
@@ -16,7 +19,7 @@ sleep 3
 echo "🌐 Test de connexion ChromaDB..."
 while true; do
     # Vérifier que ChromaDB répond
-    if curl -s http://localhost:8000/api/v2/heartbeat > /dev/null; then
+    if curl -s "http://localhost:${PORT_NUM}/api/v2/heartbeat" > /dev/null; then
         echo "✅ ChromaDB est actif"
         break
     fi

@@ -14,6 +14,10 @@ curl https://chromadb-qow6.onrender.com/
 # Réponse : HTTP ERROR 404
 ```
 
+### Déploiement Render : `Timed out ... :3000/api/v2/heartbeat`
+
+Render envoie le health check sur le **port interne** configuré pour le service (souvent **3000** ou **10000**). Si Chroma écoutait en dur sur **8000**, le check échoue. Le `deploy/chroma/start.sh` utilise désormais **`$PORT`** (injecté par Render) pour que Chroma écoute sur le même port. Après mise à jour du repo : **Manual Deploy** du service Chroma. Vérifiez aussi **Settings → Port** du service Docker : il doit correspondre à ce que Render attend (le script suit `PORT`).
+
 ## 🎯 Solution immédiate
 
 ### Option 1 : Utiliser les endpoints API (recommandé)
