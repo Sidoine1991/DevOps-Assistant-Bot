@@ -115,6 +115,13 @@ class AIService {
               []
             );
           }
+          if (this.isBotMetaQuestion(normalizedQuestion)) {
+            return this.appendSources(
+              'Je suis **DevOps Assistant Bot**, un assistant conversationnel orienté pratiques DevOps (déploiement, CI/CD, infrastructure, monitoring). ' +
+                'En mode corpus documentaire, je m’appuie sur les textes indexés dans Chroma lorsque des extraits correspondent à votre question.',
+              []
+            );
+          }
           const chromaUrlRaw = (process.env.CHROMA_URL && String(process.env.CHROMA_URL).trim()) || '';
           const chromaLooksRemote =
             /^https:\/\//i.test(chromaUrlRaw) && !/127\.0\.0\.1|localhost/i.test(chromaUrlRaw);
@@ -139,12 +146,43 @@ class AIService {
           const hintEmpty =
             '📚 **RAG connecté** mais aucun extrait ne correspond à cette question (base vide ou requête trop vague). ' +
             'Vérifiez l’ingestion (`npm run rag:ingest` vers la même `CHROMA_URL` et collection `RAG_COLLECTION`), ou reformulez avec du contexte (outil, erreur, objectif).';
-          let body = ragUp ? hintEmpty : hintNoChroma;
-          if (
+
+          const metricsExtra =
             /\bmétrique|\bmetrique|monitoring|métriques système|analyse les métriques|cpu\b|ram\b|mémoire\b/i.test(
               normalizedQuestion
-            )
-          ) {
+            );
+
+          if (ragUp) {
+            const intent = this.detectIntent(normalizedQuestion);
+            if (intent !== 'generic') {
+              const quick = this.buildIntentAnswer(intent, normalizedQuestion);
+              let body =
+                '📚 **Aucun passage des documents indexés ne correspond assez à cette question** (corpus partiel, formulation ou similarité).\n\n' +
+                `**Rappel utile (hors extraits PDF) :**\n${quick}\n\n` +
+                '_Si vous attendez des citations depuis vos cours, reformulez avec des termes proches du contenu ou vérifiez l’ingestion (`npm run rag:ingest`)._';
+              if (metricsExtra) {
+                body +=
+                  '\n\n_**Note :** en mode corpus seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide générale hors PDF, choisissez **OpenAI** ou **Gemini** dans Configuration._';
+              }
+              return this.appendSources(body, []);
+            }
+            const fb = this.getFallbackResponse(normalizedQuestion);
+            const genericFb = "Je ne connais pas encore une réponse fiable";
+            if (fb && !fb.startsWith(genericFb)) {
+              let body =
+                '📚 **Aucun extrait PDF pertinent pour cette formulation.**\n\n' +
+                `${fb}\n\n` +
+                '_Pour citer vos documents, précisez le contexte ou complétez l’ingestion._';
+              if (metricsExtra) {
+                body +=
+                  '\n\n_**Note :** en mode corpus seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
+              }
+              return this.appendSources(body, []);
+            }
+          }
+
+          let body = ragUp ? hintEmpty : hintNoChroma;
+          if (metricsExtra) {
             body +=
               '\n\n_**Note :** en mode corpus documentaire seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
           }
@@ -357,8 +395,25 @@ class AIService {
     return smallTalk.has(lower);
   }
 
+  stripAccents(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  isBotMetaQuestion(message = '') {
+    const q = this.stripAccents(String(message || '').trim().toLowerCase());
+    const c = q.replace(/['\u2019]/g, '').replace(/\s+/g, '');
+    const asksCreator =
+      (c.includes('qui') && (c.includes('cree') || c.includes('creer')) && (c.includes('ta') || c.includes('as'))) ||
+      c.includes('quiestu') ||
+      c.includes('quelesttonnom') ||
+      (c.includes('questce') && c.includes('bot'));
+    return asksCreator;
+  }
+
   buildRetrievalQuery(question) {
-    const q = (question || '').toLowerCase();
+    const q = this.stripAccents((question || '').toLowerCase());
     if (q.includes('conteneurisation') || q.includes('docker')) {
       return `${question} docker image container dockerfile build run registry`;
     }
@@ -375,10 +430,10 @@ class AIService {
   }
 
   detectIntent(question) {
-    const q = (question || '').toLowerCase();
+    const q = this.stripAccents((question || '').toLowerCase());
     if (q.includes('conteneurisation') || q.includes('docker')) return 'containerization';
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) return 'cicd';
-    if (q.includes('monitoring') || q.includes('metrique') || q.includes('métrique')) return 'monitoring';
+    if (q.includes('monitoring') || q.includes('metrique')) return 'monitoring';
     if (q.includes('devops')) return 'devops';
     return 'generic';
   }
@@ -561,11 +616,10 @@ Réponds toujours en français et de manière helpful.`;
   }
 
   getFallbackResponse(message) {
-    const lowerMessage = (message || '').toLowerCase();
+    const lowerMessage = this.stripAccents((message || '').toLowerCase());
 
     if (
       lowerMessage.includes('defini ci') ||
-      lowerMessage.includes('défini ci') ||
       lowerMessage.includes('c est quoi ci') ||
       lowerMessage.includes("c'est quoi ci")
     ) {
@@ -574,7 +628,8 @@ Réponds toujours en français et de manière helpful.`;
 
     if (
       lowerMessage.includes('defini devops') ||
-      lowerMessage.includes('définis devops') ||
+      lowerMessage.includes('definis devops') ||
+      lowerMessage.includes('definir devops') ||
       lowerMessage.includes('c est quoi devops') ||
       lowerMessage.includes("c'est quoi devops")
     ) {

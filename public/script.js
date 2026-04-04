@@ -750,14 +750,6 @@ function renderConversationHistoryList() {
     });
 }
 
-// Gestion du clavier
-function handleKeyPress(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-    }
-}
-
 // Ajouter un message au chat
 function addMessage(text, sender, timestamp, sources = []) {
     const messageDiv = document.createElement('div');
@@ -913,6 +905,12 @@ async function initChatApp() {
     }
     // Attacher tôt pour garder les actions UI utilisables même si l'API est lente/indisponible.
     sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
