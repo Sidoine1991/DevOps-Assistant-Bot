@@ -5,7 +5,11 @@ const {
   formatChromaConnectionSummary,
   connectionKey,
 } = require('./chroma-client-url');
-const { ensureChromaTenantAndDatabase, createChromaClient } = require('./chroma-bootstrap');
+const {
+  assertChromaReachable,
+  ensureChromaTenantAndDatabase,
+  createChromaClient,
+} = require('./chroma-bootstrap');
 
 class RetrievalService {
   constructor() {
@@ -83,6 +87,7 @@ class RetrievalService {
 
       for (const chromaArgs of candidates) {
         try {
+          await assertChromaReachable(chromaArgs, 6000);
           await ensureChromaTenantAndDatabase(chromaArgs);
           this.client = createChromaClient(chromaArgs);
           try {
@@ -120,6 +125,7 @@ class RetrievalService {
         if (restored) {
           for (const chromaArgs of candidates) {
             try {
+              await assertChromaReachable(chromaArgs, 6000);
               await ensureChromaTenantAndDatabase(chromaArgs);
               this.client = createChromaClient(chromaArgs);
               this.collection = await this.client.getCollection({

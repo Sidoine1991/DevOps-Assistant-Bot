@@ -1,4 +1,38 @@
+const http = require('http');
+const https = require('https');
 const { AdminClient, ChromaClient } = require('chromadb');
+
+/**
+ * Vérifie que l’API Chroma répond (évite une stack obscure si rien n’écoute sur le port).
+ */
+function assertChromaReachable(chromaArgs, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const mod = chromaArgs.ssl ? https : http;
+    const req = mod.request(
+      {
+        hostname: chromaArgs.host,
+        port: chromaArgs.port,
+        path: '/api/v2/heartbeat',
+        method: 'GET',
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.resume();
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 500) {
+          resolve();
+          return;
+        }
+        reject(new Error(`HTTP ${res.statusCode}`));
+      }
+    );
+    req.on('error', (e) => reject(e));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`aucune réponse sous ${timeoutMs} ms`));
+    });
+    req.end();
+  });
+}
 
 function chromaTenant() {
   const t = process.env.CHROMA_TENANT;
@@ -65,6 +99,7 @@ function createChromaClient(chromaArgs) {
 module.exports = {
   chromaTenant,
   chromaDatabase,
+  assertChromaReachable,
   ensureChromaTenantAndDatabase,
   createChromaClient,
 };

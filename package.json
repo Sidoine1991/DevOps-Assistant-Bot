@@ -10,6 +10,9 @@
     "build": "echo 'Build completed'",
     "docker:build": "docker build -t devops-assistant-bot .",
     "docker:run": "docker run -p 3000:3000 devops-assistant-bot",
+    "chroma:up": "docker-compose up -d chromadb",
+    "chroma:down": "docker-compose stop chromadb",
+    "chroma:logs": "docker-compose logs -f chromadb",
     "rag:ingest": "node src/rag/ingest-pdfs.js"
   },
   "keywords": [

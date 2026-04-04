@@ -3,7 +3,11 @@ const path = require('path');
 const { PDFParse } = require('pdf-parse');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const { parseChromaConnection, formatChromaConnectionSummary } = require('./chroma-client-url');
-const { ensureChromaTenantAndDatabase, createChromaClient } = require('./chroma-bootstrap');
+const {
+  assertChromaReachable,
+  ensureChromaTenantAndDatabase,
+  createChromaClient,
+} = require('./chroma-bootstrap');
 
 require('dotenv').config();
 
@@ -131,6 +135,19 @@ async function main() {
     chromaSsl: CHROMA_SSL,
   });
   console.log('Endpoint Chroma:', formatChromaConnectionSummary(chromaArgs));
+  try {
+    await assertChromaReachable(chromaArgs);
+  } catch (e) {
+    const summary = formatChromaConnectionSummary(chromaArgs);
+    console.error(
+      `❌ Aucun serveur Chroma sur ${summary} (${(e && e.message) || e}).\n` +
+        '   1) Ouvrez **Docker Desktop** et attendez qu’il soit prêt.\n' +
+        '   2) Depuis la racine du projet : **npm run chroma:up** (ou : docker-compose up -d chromadb).\n' +
+        '   3) Vérifiez : http://127.0.0.1:8000/api/v2/heartbeat dans le navigateur ou curl.\n' +
+        '   4) Relancez : npm run rag:ingest'
+    );
+    process.exit(1);
+  }
   const embeddingFunction = getEmbeddingFunction();
   await ensureChromaTenantAndDatabase(chromaArgs);
   const client = createChromaClient(chromaArgs);
