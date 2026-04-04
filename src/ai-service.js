@@ -659,6 +659,18 @@ Réponds toujours en français et de manière helpful.`;
       return 'CI signifie Intégration Continue. C’est une pratique où chaque changement de code est automatiquement testé et validé via un pipeline (build + tests + qualité) pour détecter les erreurs tôt.';
     }
 
+    const asksDefinition =
+      /c\s+est\s+quoi\b|quest[\s-]ce\s+que\b|qu\s+est[\s-]ce\s+que\b|definir\b|defini(s)?\b|explique(r)?\b|what\s+is\b|what\s+are\b/i.test(
+        relaxed
+      );
+    if (asksDefinition && /\bserveurs?\b/.test(lowerMessage)) {
+      return (
+        'Un **serveur**, en informatique, est une machine (physique ou virtuelle) ou un programme qui **met des ressources ou des services à disposition** d’autres machines ou applications, souvent sur un réseau. ' +
+        'Exemples : serveur web (pages HTTP), serveur de base de données, serveur d’API. Les **clients** (navigateur, appli mobile, autre service) envoient des requêtes ; le serveur répond ou traite les données. ' +
+        'En contexte DevOps, on parle aussi de **serveurs de build**, de **registry** d’images, ou de nœuds dans un cluster.'
+      );
+    }
+
     if (
       topicOnly === 'devops' ||
       topicOnly === 'dev ops' ||
