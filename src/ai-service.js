@@ -105,7 +105,7 @@ class AIService {
         ragChunks = [...userKnowledgeContext.chunks, ...ragChunks];
       }
 
-      // Mode local RAG: répond sans clé API, directement depuis les extraits.
+      // Mode local RAG : uniquement extraits Chroma (+ docs utilisateur indexés). Aucun appel Gemini/OpenAI.
       if (context.preferLocalRag === true || provider === 'local-rag') {
         if (!ragChunks || ragChunks.length === 0) {
           const ragUp = this.retrievalService && this.retrievalService.enabled;
@@ -115,27 +115,15 @@ class AIService {
               grounding.sources
             );
           }
-          // Si le corpus RAG est vide ou Chroma est down, utiliser Gemini/OpenAI côté serveur quand c'est possible.
-          if (this.gemini || this.openai) {
-            const note = ragUp
-              ? 'Aucun extrait documentaire pertinent n’a été trouvé pour cette question.'
-              : 'Le RAG documentaire (Chroma) n’est pas disponible sur ce serveur.';
-            const cloudPrompt =
-              `${systemPrompt}\n\nNote (${note}) Réponds en français comme expert DevOps. Ne cite pas de documents PDF internes.`;
-            if (this.gemini) {
-              return await this.getGeminiResponse(message, cloudPrompt, attachments);
-            }
-            return await this.getOpenAIResponse(message, cloudPrompt);
-          }
           const hintNoChroma =
             '📚 **Chroma / RAG indisponible sur ce serveur.** Sur Render (ou tout hébergeur distant), `127.0.0.1` ne pointe pas vers votre PC. ' +
             'Créez un service **Chroma** (Docker) séparé, définissez `CHROMA_URL=https://votre-chroma.onrender.com`, redéployez l’app, puis ingérez les PDF depuis votre machine : `CHROMA_URL=… npm run rag:ingest`. ' +
-            'Vous pouvez aussi configurer **Gemini** ou **OpenAI** dans la page Configuration pour des réponses sans RAG documentaire.';
+            'Pour des réponses **sans** corpus documentaire, choisissez **Gemini** ou **OpenAI** dans la page Configuration.';
           const hintEmpty =
             '📚 **RAG connecté** mais aucun extrait ne correspond à cette question (base vide ou requête trop vague). ' +
             'Vérifiez l’ingestion (`npm run rag:ingest` vers la même `CHROMA_URL` et collection `RAG_COLLECTION`), ou reformulez avec du contexte (outil, erreur, objectif).';
-          const fallback = `${ragUp ? hintEmpty : hintNoChroma}\n\n${this.getFallbackResponse(normalizedQuestion)}`;
-          return this.appendSources(fallback, grounding.sources);
+          const body = ragUp ? hintEmpty : hintNoChroma;
+          return this.appendSources(body, grounding.sources);
         }
         return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
       }
@@ -165,6 +153,12 @@ class AIService {
       }
     } catch (error) {
       console.error('Erreur IA:', error);
+      if (context.preferLocalRag === true || context.provider === 'local-rag') {
+        return this.appendSources(
+          'Une erreur est survenue en mode RAG local. Vérifiez Chroma et les documents indexés, puis réessayez.',
+          context.knowledgeContext?.sources || []
+        );
+      }
       // Si OpenAI échoue (ex: invalid_api_key), tenter Gemini si disponible.
       if (this.gemini) {
         try {

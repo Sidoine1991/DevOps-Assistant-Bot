@@ -4,6 +4,8 @@ const socket = socketBase
     ? io(socketBase, { transports: ['websocket', 'polling'] })
     : io({ transports: ['websocket', 'polling'] });
 let startTime = Date.now();
+let lastServerUptimeSeconds = null;
+let lastServerUptimeAt = null;
 let userId = localStorage.getItem('devops-user-id') || 'user-' + Math.random().toString(36).substr(2, 9);
 let currentConversationId = null;
 let conversations = [];
@@ -518,7 +520,8 @@ async function refreshConnectedUsers() {
         const connected = await connectedRes.json();
         const connectedInfo = document.getElementById('connectedUsersInfo');
         if (connectedInfo && connected.success) {
-            connectedInfo.textContent = `Utilisateurs connectés: ${connected.sockets} (auth: ${connected.authenticatedUsers})`;
+            connectedInfo.textContent =
+                `Sessions navigateur (Socket): ${connected.sockets} · Comptes identifiés sur cette instance: ${connected.authenticatedUsers}`;
         }
     } catch (error) {
         // silencieux
@@ -538,43 +541,81 @@ async function loadBotRuntimeStatus(userConfig) {
 
         const servicesEl = document.getElementById('servicesCount');
         if (servicesEl) {
-            const services = status.services && typeof status.services === 'object' ? status.services : {};
-            const activeCount = Object.values(services).filter((v) => v === 'active').length;
-            servicesEl.textContent = `${activeCount} actif${activeCount > 1 ? 's' : ''}`;
+            if (Array.isArray(status.components) && status.components.length) {
+                const labels = status.components
+                    .map((c) => `${c.label || c.id}: ${c.status === 'active' ? 'OK' : '—'}`)
+                    .join(' · ');
+                servicesEl.textContent = status.componentsSummary || '-';
+                servicesEl.title = labels;
+            } else {
+                const services = status.services && typeof status.services === 'object' ? status.services : {};
+                const activeCount = Object.values(services).filter((v) => v === 'active').length;
+                servicesEl.textContent = `${activeCount} actif${activeCount > 1 ? 's' : ''}`;
+                servicesEl.removeAttribute('title');
+            }
+        }
+
+        if (typeof status.uptimeSeconds === 'number' && !Number.isNaN(status.uptimeSeconds)) {
+            lastServerUptimeSeconds = status.uptimeSeconds;
+            lastServerUptimeAt = Date.now();
+            updateUptime();
         }
 
         const aiStatusElement = document.getElementById('aiStatus');
         const aiBadgeElement = document.getElementById('aiBadge');
         if (aiStatusElement && aiBadgeElement) {
-            const ragEnabled = !!(status.rag && status.rag.enabled);
             const hasCloud = !!status.hasAIConfig;
-            const wantsLocalRag = userConfig && userConfig.provider === 'local-rag';
+            const rag =
+                status.rag && typeof status.rag.operational === 'boolean'
+                    ? status.rag.operational
+                    : !!(status.rag && status.rag.enabled);
+            const choseLocalRag = !!(userConfig && userConfig.provider === 'local-rag');
             const sourceLabel = userConfig && userConfig.source === 'local' ? ' (config locale)' : '';
+            const pref =
+                userConfig && userConfig.provider && userConfig.provider !== 'local-rag'
+                    ? userConfig.provider
+                    : null;
 
-            if (ragEnabled && wantsLocalRag) {
-                aiStatusElement.textContent = '✅ mode local RAG' + sourceLabel;
+            if (choseLocalRag && rag) {
+                aiStatusElement.textContent = '✅ Mode RAG documentaire' + sourceLabel;
                 aiStatusElement.style.color = '#4caf50';
-                aiBadgeElement.textContent = 'IA active: mode local RAG' + sourceLabel;
+                aiBadgeElement.textContent = 'IA: corpus documentaire (votre choix)' + sourceLabel;
                 aiBadgeElement.className = 'ai-badge success';
-            } else if (ragEnabled && !wantsLocalRag) {
-                aiStatusElement.textContent = '✅ RAG doc + provider configuré';
-                aiStatusElement.style.color = '#4caf50';
-                aiBadgeElement.textContent = 'IA active: RAG + ' + (userConfig && userConfig.provider ? userConfig.provider : 'cloud');
-                aiBadgeElement.className = 'ai-badge success';
-            } else if (!ragEnabled && wantsLocalRag && hasCloud) {
-                aiStatusElement.textContent = '⚠️ RAG doc indisponible — réponses cloud' + sourceLabel;
+            } else if (choseLocalRag && !rag && hasCloud) {
+                aiStatusElement.textContent =
+                    '⚠️ RAG indisponible ici — secours cloud' + sourceLabel;
                 aiStatusElement.style.color = '#ff9800';
-                aiBadgeElement.textContent = 'IA: Gemini/OpenAI (serveur) — sans corpus RAG';
+                aiBadgeElement.textContent =
+                    'Vous avez choisi le corpus local, mais Chroma n’est pas joignable — réponses via cloud';
                 aiBadgeElement.className = 'ai-badge warning';
-            } else if (hasCloud) {
-                aiStatusElement.textContent = '✅ provider cloud';
-                aiStatusElement.style.color = '#4caf50';
-                aiBadgeElement.textContent = 'IA active: Gemini/OpenAI';
-                aiBadgeElement.className = 'ai-badge success';
-            } else if (wantsLocalRag) {
-                aiStatusElement.textContent = '⚠️ RAG indisponible — pas de clé cloud';
+            } else if (choseLocalRag && !rag && !hasCloud) {
+                aiStatusElement.textContent = '⚠️ RAG indisponible — pas de secours cloud' + sourceLabel;
                 aiStatusElement.style.color = '#ff9800';
-                aiBadgeElement.textContent = 'Configurez Chroma ou une clé IA';
+                aiBadgeElement.textContent = 'Configurez Chroma ou des clés IA sur le serveur';
+                aiBadgeElement.className = 'ai-badge warning';
+            } else if (!choseLocalRag && rag && hasCloud) {
+                aiStatusElement.textContent = '✅ RAG documentaire + IA cloud (serveur)';
+                aiStatusElement.style.color = '#4caf50';
+                aiBadgeElement.textContent = pref
+                    ? `IA prête — RAG + votre fournisseur (${pref})`
+                    : 'IA prête — RAG documentaire et clés cloud serveur';
+                aiBadgeElement.className = 'ai-badge success';
+            } else if (!choseLocalRag && !rag && hasCloud) {
+                aiStatusElement.textContent = '✅ IA cloud (serveur) — sans corpus RAG ici';
+                aiStatusElement.style.color = '#4caf50';
+                aiBadgeElement.textContent = pref
+                    ? `Réponses via ${pref} — corpus documentaire non connecté sur cette instance`
+                    : 'Réponses via les clés IA du serveur — Chroma non connecté ou vide ici';
+                aiBadgeElement.className = 'ai-badge success';
+            } else if (!choseLocalRag && rag && !hasCloud) {
+                aiStatusElement.textContent = '⚠️ RAG seul — pas de clés cloud serveur';
+                aiStatusElement.style.color = '#ff9800';
+                aiBadgeElement.textContent = 'Corpus documentaire OK, mais aucune clé Gemini/OpenAI côté serveur';
+                aiBadgeElement.className = 'ai-badge warning';
+            } else {
+                aiStatusElement.textContent = '⚠️ IA non disponible sur ce serveur';
+                aiStatusElement.style.color = '#ff9800';
+                aiBadgeElement.textContent = 'Configurez Chroma et/ou des clés IA (serveur ou page Configuration)';
                 aiBadgeElement.className = 'ai-badge warning';
             }
         }
@@ -805,13 +846,17 @@ function updateStatus(status) {
     }
 }
 
-// Mise à jour de l'uptime
+// Mise à jour de l'uptime (priorité au temps serveur si synchronisé via /api/bot/status)
 function updateUptime() {
-    const now = Date.now();
-    const uptime = now - startTime;
-    const hours = Math.floor(uptime / (1000 * 60 * 60));
-    const minutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
-    
+    if (!uptimeElement) return;
+    let totalSeconds;
+    if (lastServerUptimeSeconds != null && lastServerUptimeAt != null) {
+        totalSeconds = lastServerUptimeSeconds + Math.floor((Date.now() - lastServerUptimeAt) / 1000);
+    } else {
+        totalSeconds = Math.floor((Date.now() - startTime) / 1000);
+    }
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
     uptimeElement.textContent = `${hours}h ${minutes}m`;
 }
 
@@ -875,8 +920,7 @@ async function initChatApp() {
     // Animation initiale des métriques
     setTimeout(animateMetrics, 500);
     
-    // Mise à jour périodique
-    setInterval(updateUptime, 60000); // Chaque minute
+    // Mise à jour périodique (uptime: voir fin d’init après loadBotRuntimeStatus)
     setInterval(updateMetrics, 5000); // Chaque 5 secondes
     
     // Les listeners d'envoi et logout sont déjà attachés plus haut.
@@ -918,20 +962,13 @@ async function initChatApp() {
 
     const config = await loadUserConfig();
     await loadBotRuntimeStatus(config);
+    updateUptime();
     setInterval(async () => {
         const c = await loadUserConfig();
         await loadBotRuntimeStatus(c);
     }, 30000);
 
-    const aiStatusElement = document.getElementById('aiStatus');
-    const aiBadgeElement = document.getElementById('aiBadge');
-    if (!config && aiStatusElement && aiBadgeElement) {
-        aiStatusElement.textContent = '⚠️ Non configurée';
-        aiStatusElement.style.color = '#ff9800';
-        aiBadgeElement.textContent = 'IA non configurée';
-        aiBadgeElement.className = 'ai-badge warning';
-        await loadBotRuntimeStatus(null);
-    }
+    setInterval(updateUptime, 15000);
 }
 
 if (document.readyState === 'loading') {

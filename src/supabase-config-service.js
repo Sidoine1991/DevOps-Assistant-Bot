@@ -88,7 +88,7 @@ class SupabaseConfigService {
             user_id: userId,
             provider: provider,
             updated_at: new Date().toISOString(),
-            // Clé optionnelle : secours Gemini/OpenAI si le RAG documentaire est indisponible.
+            // Mode RAG local : pas de clé cloud (réponses uniquement depuis Chroma / docs utilisateur).
             api_key: apiKey && String(apiKey).trim() ? String(apiKey).trim() : null,
           }
         : {

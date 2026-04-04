@@ -310,7 +310,7 @@
                             <i class="material-icons">auto_stories</i>
                             Mode local RAG
                         </h3>
-                        <p>Réponse locale basée uniquement sur vos documents indexés (ChromaDB), sans clé API.</p>
+                        <p>Réponses construites uniquement à partir du corpus Chroma (cours) et de vos documents personnels indexés — aucun appel à une API cloud.</p>
                     </div>
                     <div class="provider-card" data-provider="openai">
                         <h3>
@@ -383,6 +383,28 @@
         const clientConfigService = typeof ClientConfigService !== 'undefined' ? new ClientConfigService() : null;
         const apiKeyField = document.getElementById('apiKey');
         const apiKeyGroup = apiKeyField.closest('.form-group');
+
+        function syncProviderFormUI(updateBanner) {
+            if (selectedProvider === 'local-rag') {
+                apiKeyField.removeAttribute('required');
+                apiKeyField.value = '';
+                apiKeyField.disabled = true;
+                apiKeyField.placeholder = 'Non utilisé en mode RAG local';
+                apiKeyGroup.style.opacity = '0.65';
+                const help = apiKeyGroup.querySelector('.help-text');
+                if (help) help.textContent = 'En mode RAG local, aucune clé API n’est nécessaire ni utilisée.';
+                if (updateBanner !== false) {
+                    document.getElementById('statusBanner').textContent = 'Mode local RAG : uniquement les extraits Chroma + vos documents indexés — pas d’appel Gemini/OpenAI.';
+                }
+            } else {
+                apiKeyField.disabled = false;
+                apiKeyField.setAttribute('required', 'required');
+                apiKeyField.placeholder = 'Entrez votre clé API';
+                apiKeyGroup.style.opacity = '1';
+                const help = apiKeyGroup.querySelector('.help-text');
+                if (help) help.textContent = 'OpenAI: commence par "sk-" • Gemini: clé Google (formats récents acceptés)';
+            }
+        }
         
         // Sélection du fournisseur
         document.querySelectorAll('.provider-card').forEach(card => {
@@ -390,14 +412,7 @@
                 document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 selectedProvider = card.dataset.provider;
-                if (selectedProvider === 'local-rag') {
-                    apiKeyField.removeAttribute('required');
-                    apiKeyGroup.style.opacity = '1';
-                    document.getElementById('statusBanner').textContent = 'Mode local RAG : les réponses viennent des documents (Chroma). Optionnel : une clé Gemini ou OpenAI sert de secours si le corpus est indisponible ou sans extrait pertinent.';
-                } else {
-                    apiKeyField.setAttribute('required', 'required');
-                    apiKeyGroup.style.opacity = '1';
-                }
+                syncProviderFormUI(true);
             });
         });
 
@@ -467,7 +482,10 @@
         document.getElementById('configForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const apiKey = document.getElementById('apiKey').value.trim();
+            let apiKey = document.getElementById('apiKey').value.trim();
+            if (selectedProvider === 'local-rag') {
+                apiKey = '';
+            }
             const userId = document.getElementById('userId').value.trim();
             const saveButton = document.getElementById('saveButton');
             
@@ -483,16 +501,7 @@
             document.getElementById('statusBanner').className = 'status-banner loading';
 
             // Validation
-            if (selectedProvider === 'local-rag' && apiKey) {
-                const validationGemini = await validateApiKey(apiKey, 'gemini');
-                const validationOpenAI = await validateApiKey(apiKey, 'openai');
-                if (!validationGemini.isValid && !validationOpenAI.isValid) {
-                    showValidationMessage('Clé de secours invalide : utilisez une clé Gemini ou OpenAI au bon format, ou laissez le champ vide.', false);
-                    saveButton.disabled = false;
-                    saveButton.innerHTML = '<i class="material-icons">save</i> Sauvegarder';
-                    return;
-                }
-            } else if (selectedProvider !== 'local-rag') {
+            if (selectedProvider !== 'local-rag') {
                 const validation = await validateApiKey(apiKey, selectedProvider);
                 if (!validation.isValid) {
                     showValidationMessage(getActionableMessage(validation), false);
@@ -509,7 +518,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ apiKey: apiKey || '', provider: selectedProvider, userId })
+                    body: JSON.stringify({ apiKey: selectedProvider === 'local-rag' ? '' : (apiKey || ''), provider: selectedProvider, userId })
                 });
 
                 const result = await response.json();
@@ -631,6 +640,7 @@
                                 selectedProvider = config.provider;
                             }
                         });
+                        syncProviderFormUI(false);
                     } else if (clientConfigService) {
                         const localConfig = await clientConfigService.loadConfig();
                         if (localConfig && localConfig.apiKey) {
@@ -662,8 +672,8 @@
             if (defaultCard) {
                 defaultCard.classList.add('selected');
             }
-            apiKeyField.removeAttribute('required');
-            apiKeyGroup.style.opacity = '0.6';
+            selectedProvider = 'local-rag';
+            syncProviderFormUI(true);
             
             // Pré-remplir l'ID utilisateur depuis le localStorage
             const savedUserId = localStorage.getItem('devops-user-id');

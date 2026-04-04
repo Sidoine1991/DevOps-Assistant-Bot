@@ -14,6 +14,7 @@ const AuthService = require('./auth-service');
 
 const app = express();
 const server = http.createServer(app);
+const SERVER_STARTED_AT = Date.now();
 
 const originsRaw = process.env.FRONTEND_ORIGINS;
 const corsOrigins = originsRaw
@@ -63,11 +64,23 @@ app.get('/api/bot/status', async (req, res) => {
   const dbConnected = await supabaseService.isConnected();
   const configConnected = await supabaseConfigService.isConnected();
   const stats = await supabaseService.getDashboardStats();
-  
-  res.json({ 
-    bot: 'online', 
+  const hasAIConfig = !!(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY);
+  const rs = aiService.retrievalService;
+  const ragOperational = !!(rs && rs.collection);
+  const ragEnvOn = process.env.RAG_ENABLED !== 'false';
+
+  const components = [
+    { id: 'database', label: 'Supabase', status: dbConnected ? 'active' : 'inactive' },
+    { id: 'rag', label: 'RAG (Chroma)', status: ragOperational ? 'active' : 'inactive' },
+    { id: 'cloud_llm', label: 'IA cloud (clés serveur)', status: hasAIConfig ? 'active' : 'inactive' },
+  ];
+  const activeComponents = components.filter((c) => c.status === 'active').length;
+
+  res.json({
+    bot: 'online',
     version: '1.0.0',
-    hasAIConfig: !!(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY),
+    hasAIConfig,
+    uptimeSeconds: Math.floor((Date.now() - SERVER_STARTED_AT) / 1000),
     database: {
       connected: dbConnected,
       type: 'Supabase',
@@ -77,18 +90,15 @@ app.get('/api/bot/status', async (req, res) => {
         code: configConnected.code
       }
     },
-    services: {
-      'command-engine': 'active',
-      'monitor': 'active',
-      'notification': 'active',
-      'database': dbConnected ? 'active' : 'inactive'
-    },
+    components,
+    componentsSummary: `${activeComponents}/${components.length} opérationnels`,
     connectedUsers: {
       sockets: io.engine.clientsCount,
       authenticated: connectedUserIds.size
     },
     rag: {
-      enabled: !!(aiService.retrievalService && aiService.retrievalService.enabled),
+      enabled: ragEnvOn && !!(rs && rs.enabled),
+      operational: ragOperational,
       collection: process.env.RAG_COLLECTION || 'devops_courses',
       chromaUrlConfigured: !!(process.env.CHROMA_URL && String(process.env.CHROMA_URL).trim()),
     },
@@ -475,17 +485,7 @@ io.on('connection', (socket) => {
         aiService.initializeProviders();
       }
 
-      // Mode local-rag : clé optionnelle en base = secours cloud si Chroma ou corpus vide.
-      if (provider === 'local-rag' && userConfig && userConfig.apiKey && String(userConfig.apiKey).trim()) {
-        const k = String(userConfig.apiKey).trim();
-        if (k.startsWith('sk-')) {
-          process.env.OPENAI_API_KEY = k;
-        } else {
-          process.env.GEMINI_API_KEY = k;
-        }
-        aiService.initializeProviders();
-      }
-
+      // Mode local-rag : pas d’injection de clé cloud — les réponses ne viennent que de Chroma / docs utilisateur.
       if (provider === 'local-rag') {
         aiService.initializeProviders();
       }

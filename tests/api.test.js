@@ -27,12 +27,15 @@ describe('API Tests', () => {
       
       expect(response.body).toHaveProperty('bot', 'online');
       expect(response.body).toHaveProperty('version', '1.0.0');
-      expect(response.body).toHaveProperty('services');
-      expect(response.body.services).toHaveProperty('command-engine', 'active');
-      expect(response.body.services).toHaveProperty('monitor', 'active');
-      expect(response.body.services).toHaveProperty('notification', 'active');
+      expect(response.body).toHaveProperty('uptimeSeconds');
+      expect(typeof response.body.uptimeSeconds).toBe('number');
+      expect(response.body).toHaveProperty('components');
+      expect(Array.isArray(response.body.components)).toBe(true);
+      expect(response.body.components.length).toBeGreaterThanOrEqual(3);
+      expect(response.body).toHaveProperty('componentsSummary');
       expect(response.body).toHaveProperty('rag');
       expect(response.body.rag).toHaveProperty('enabled');
+      expect(response.body.rag).toHaveProperty('operational');
       expect(response.body.rag).toHaveProperty('chromaUrlConfigured');
     });
   });
