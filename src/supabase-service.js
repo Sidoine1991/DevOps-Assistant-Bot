@@ -242,10 +242,24 @@ class SupabaseService {
         this.client.from('error_logs').select('count', { count: 'exact' }).gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       ]);
 
+      if (conversationsResult?.error) {
+        console.warn('getDashboardStats conversations:', conversationsResult.error.message || conversationsResult.error);
+      }
+      if (metricsResult?.error) {
+        console.warn('getDashboardStats system_metrics:', metricsResult.error.message || metricsResult.error);
+      }
+      if (errorsResult?.error) {
+        console.warn('getDashboardStats error_logs:', errorsResult.error.message || errorsResult.error);
+      }
+
+      const metricsRows = metricsResult?.data;
+      const latest =
+        Array.isArray(metricsRows) && metricsRows.length > 0 ? metricsRows[0] : null;
+
       return {
-        totalConversations: conversationsResult.count || 0,
-        latestMetrics: metricsResult.data[0] || null,
-        recentErrors: errorsResult.count || 0
+        totalConversations: conversationsResult?.error ? 0 : conversationsResult.count ?? 0,
+        latestMetrics: latest,
+        recentErrors: errorsResult?.error ? 0 : errorsResult.count ?? 0
       };
     } catch (error) {
       console.error('Erreur récupération stats dashboard:', error);
