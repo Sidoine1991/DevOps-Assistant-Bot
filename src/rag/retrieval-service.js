@@ -1,4 +1,3 @@
-const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const ChromaBackupManager = require('./chroma-backup-manager');
 const {
@@ -6,6 +5,7 @@ const {
   formatChromaConnectionSummary,
   connectionKey,
 } = require('./chroma-client-url');
+const { ensureChromaTenantAndDatabase, createChromaClient } = require('./chroma-bootstrap');
 
 class RetrievalService {
   constructor() {
@@ -83,7 +83,8 @@ class RetrievalService {
 
       for (const chromaArgs of candidates) {
         try {
-          this.client = new ChromaClient(chromaArgs);
+          await ensureChromaTenantAndDatabase(chromaArgs);
+          this.client = createChromaClient(chromaArgs);
           try {
             this.collection = await this.client.getCollection({
               name: this.collectionName,
@@ -94,11 +95,11 @@ class RetrievalService {
             const msg = String(collectionError && collectionError.message ? collectionError.message : collectionError);
             // chromadb renvoie souvent « The requested resource could not be found » (sans sous-chaîne exacte « not found »).
             if (/not found|could not be found|does not exist|404|no such collection|unknown collection/i.test(msg)) {
-              this.collection = await this.client.createCollection({
+              this.collection = await this.client.getOrCreateCollection({
                 name: this.collectionName,
                 embeddingFunction: this.embeddingFunction,
               });
-              console.log(`ℹ️ Collection Chroma créée: "${this.collectionName}"`);
+              console.log(`ℹ️ Collection Chroma prête: "${this.collectionName}"`);
             } else {
               throw collectionError;
             }
@@ -119,7 +120,8 @@ class RetrievalService {
         if (restored) {
           for (const chromaArgs of candidates) {
             try {
-              this.client = new ChromaClient(chromaArgs);
+              await ensureChromaTenantAndDatabase(chromaArgs);
+              this.client = createChromaClient(chromaArgs);
               this.collection = await this.client.getCollection({
                 name: this.collectionName,
                 embeddingFunction: this.embeddingFunction,

@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { PDFParse } = require('pdf-parse');
-const { ChromaClient } = require('chromadb');
 const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const { parseChromaConnection, formatChromaConnectionSummary } = require('./chroma-client-url');
+const { ensureChromaTenantAndDatabase, createChromaClient } = require('./chroma-bootstrap');
 
 require('dotenv').config();
 
@@ -27,7 +27,6 @@ function resolvePdfDirs() {
   return fs.existsSync(resolved) ? [resolved] : [];
 }
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
-const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
 const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 1200);
 const RAG_INGEST_BATCH_SIZE = Number(process.env.RAG_INGEST_BATCH_SIZE || 16);
 const RAG_CHUNK_SIZE = Number(process.env.RAG_CHUNK_SIZE || 1200);
@@ -119,7 +118,7 @@ async function main() {
   const pdfLists = await Promise.all(dataDirs.map((dir) => loadPdfFiles(dir)));
   const pdfFiles = pdfLists.flat();
   if (pdfFiles.length === 0) {
-    console.warn('⚠️ Aucun PDF trouvé dans', DATA_DIR);
+    console.warn('⚠️ Aucun PDF trouvé dans', dataDirs.join(', '));
     process.exit(0);
   }
 
@@ -133,7 +132,8 @@ async function main() {
   });
   console.log('Endpoint Chroma:', formatChromaConnectionSummary(chromaArgs));
   const embeddingFunction = getEmbeddingFunction();
-  const client = new ChromaClient(chromaArgs);
+  await ensureChromaTenantAndDatabase(chromaArgs);
+  const client = createChromaClient(chromaArgs);
 
   if (RAG_INGEST_REPLACE) {
     try {
@@ -144,13 +144,10 @@ async function main() {
     }
   }
 
-  // Assurer la collection
-  let collection;
-  try {
-    collection = await client.getCollection({ name: CHROMA_COLLECTION, embeddingFunction });
-  } catch {
-    collection = await client.createCollection({ name: CHROMA_COLLECTION, embeddingFunction });
-  }
+  const collection = await client.getOrCreateCollection({
+    name: CHROMA_COLLECTION,
+    embeddingFunction,
+  });
 
   let globalIndex = 0;
 
@@ -214,9 +211,16 @@ async function main() {
 
 main().catch((err) => {
   console.error('❌ Erreur ingestion RAG:', err);
-  if (/Failed to connect|ChromaConnectionError|ECONNREFUSED/i.test(String(err && err.message))) {
+  const msg = String(err && err.message ? err.message : err);
+  if (/Failed to connect|ChromaConnectionError|ECONNREFUSED/i.test(msg)) {
     console.error(
       '→ Vérifiez que Chroma tourne (local Docker ou service Render) et que CHROMA_URL / CHROMA_HOST+CHROMA_PORT pointent vers le bon hôte et port (sans /api/v1 dans l’URL).'
+    );
+  }
+  if (/ChromaNotFoundError|could not be found/i.test(msg) || (err && err.name === 'ChromaNotFoundError')) {
+    console.error(
+      '→ Souvent : image Chroma trop ancienne (chromadb@3.x exige l’API v2) ou le port 8000 ne pointe pas vers Chroma. ' +
+        'Utilisez `docker pull chromadb/chroma:latest` puis relancez le conteneur, ou vérifiez qu’aucune autre appli n’écoute sur ce port.'
     );
   }
   process.exit(1);
