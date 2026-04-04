@@ -564,6 +564,7 @@ async function loadBotRuntimeStatus(userConfig) {
         const aiStatusElement = document.getElementById('aiStatus');
         const aiBadgeElement = document.getElementById('aiBadge');
         if (aiStatusElement && aiBadgeElement) {
+            aiBadgeElement.removeAttribute('title');
             const hasCloud = !!status.hasAIConfig;
             const rag =
                 status.rag && typeof status.rag.operational === 'boolean'
@@ -583,15 +584,20 @@ async function loadBotRuntimeStatus(userConfig) {
                 aiBadgeElement.className = 'ai-badge success';
             } else if (choseLocalRag && !rag && hasCloud) {
                 aiStatusElement.textContent =
-                    '⚠️ RAG indisponible ici — secours cloud' + sourceLabel;
+                    '⚠️ Chroma indisponible — mode RAG local' + sourceLabel;
                 aiStatusElement.style.color = '#ff9800';
                 aiBadgeElement.textContent =
-                    'Vous avez choisi le corpus local, mais Chroma n’est pas joignable — réponses via cloud';
+                    'RAG local : sans Chroma joignable, aucune réponse cloud automatique.';
+                aiBadgeElement.title =
+                    'Vous avez choisi le corpus documentaire. Les réponses ne passent pas par Gemini/OpenAI. Corrigez CHROMA_URL sur le serveur ou basculez vers OpenAI/Gemini dans Configuration.';
                 aiBadgeElement.className = 'ai-badge warning';
             } else if (choseLocalRag && !rag && !hasCloud) {
-                aiStatusElement.textContent = '⚠️ RAG indisponible — pas de secours cloud' + sourceLabel;
+                aiStatusElement.textContent = '⚠️ Chroma indisponible — pas d’IA cloud serveur' + sourceLabel;
                 aiStatusElement.style.color = '#ff9800';
-                aiBadgeElement.textContent = 'Configurez Chroma ou des clés IA sur le serveur';
+                aiBadgeElement.textContent =
+                    'RAG local : ajoutez Chroma (CHROMA_URL) ou des clés IA serveur, ou passez à OpenAI/Gemini.';
+                aiBadgeElement.title =
+                    'Sans Chroma ni clés cloud sur le serveur, le mode corpus seul ne peut pas répondre. Ajustez la configuration.';
                 aiBadgeElement.className = 'ai-badge warning';
             } else if (!choseLocalRag && rag && hasCloud) {
                 aiStatusElement.textContent = '✅ RAG documentaire + IA cloud (serveur)';

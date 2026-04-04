@@ -122,7 +122,15 @@ class AIService {
           const hintEmpty =
             '📚 **RAG connecté** mais aucun extrait ne correspond à cette question (base vide ou requête trop vague). ' +
             'Vérifiez l’ingestion (`npm run rag:ingest` vers la même `CHROMA_URL` et collection `RAG_COLLECTION`), ou reformulez avec du contexte (outil, erreur, objectif).';
-          const body = ragUp ? hintEmpty : hintNoChroma;
+          let body = ragUp ? hintEmpty : hintNoChroma;
+          if (
+            /\bmétrique|\bmetrique|monitoring|métriques système|analyse les métriques|cpu\b|ram\b|mémoire\b/i.test(
+              normalizedQuestion
+            )
+          ) {
+            body +=
+              '\n\n_**Note :** en mode corpus documentaire seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
+          }
           return this.appendSources(body, grounding.sources);
         }
         return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
