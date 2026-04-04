@@ -3,9 +3,27 @@ const https = require('https');
 const { AdminClient, ChromaClient } = require('chromadb');
 
 /**
+ * Délai heartbeat : local court ; HTTPS distant long (ex. Render free = cold start 30–90 s).
+ * Surcharge : RAG_CHROMA_HEARTBEAT_MS (millisecondes).
+ */
+function chromaHeartbeatTimeoutMs(chromaArgs) {
+  const fromEnv = process.env.RAG_CHROMA_HEARTBEAT_MS;
+  if (fromEnv != null && String(fromEnv).trim() !== '') {
+    const n = Number(fromEnv);
+    if (!Number.isNaN(n) && n >= 3000) return n;
+  }
+  const host = String(chromaArgs.host || '').toLowerCase();
+  const isLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if (chromaArgs.ssl && !isLocal) return 120000;
+  if (!isLocal) return 60000;
+  return 8000;
+}
+
+/**
  * Vérifie que l’API Chroma répond (évite une stack obscure si rien n’écoute sur le port).
  */
-function assertChromaReachable(chromaArgs, timeoutMs = 8000) {
+function assertChromaReachable(chromaArgs, timeoutMs) {
+  const ms = timeoutMs != null ? timeoutMs : chromaHeartbeatTimeoutMs(chromaArgs);
   return new Promise((resolve, reject) => {
     const mod = chromaArgs.ssl ? https : http;
     const req = mod.request(
@@ -14,7 +32,7 @@ function assertChromaReachable(chromaArgs, timeoutMs = 8000) {
         port: chromaArgs.port,
         path: '/api/v2/heartbeat',
         method: 'GET',
-        timeout: timeoutMs,
+        timeout: ms,
       },
       (res) => {
         res.resume();
@@ -28,7 +46,7 @@ function assertChromaReachable(chromaArgs, timeoutMs = 8000) {
     req.on('error', (e) => reject(e));
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error(`aucune réponse sous ${timeoutMs} ms`));
+      reject(new Error(`aucune réponse sous ${ms} ms`));
     });
     req.end();
   });
@@ -99,6 +117,7 @@ function createChromaClient(chromaArgs) {
 module.exports = {
   chromaTenant,
   chromaDatabase,
+  chromaHeartbeatTimeoutMs,
   assertChromaReachable,
   ensureChromaTenantAndDatabase,
   createChromaClient,

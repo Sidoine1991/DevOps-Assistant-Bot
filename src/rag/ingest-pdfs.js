@@ -5,6 +5,7 @@ const { DefaultEmbeddingFunction } = require('@chroma-core/default-embed');
 const { parseChromaConnection, formatChromaConnectionSummary } = require('./chroma-client-url');
 const {
   assertChromaReachable,
+  chromaHeartbeatTimeoutMs,
   ensureChromaTenantAndDatabase,
   createChromaClient,
 } = require('./chroma-bootstrap');
@@ -134,17 +135,26 @@ async function main() {
     chromaPort: CHROMA_PORT,
     chromaSsl: CHROMA_SSL,
   });
-  console.log('Endpoint Chroma:', formatChromaConnectionSummary(chromaArgs));
+  const hbMs = chromaHeartbeatTimeoutMs(chromaArgs);
+  console.log('Endpoint Chroma:', formatChromaConnectionSummary(chromaArgs), `(timeout heartbeat ${hbMs / 1000}s)`);
   try {
-    await assertChromaReachable(chromaArgs);
+    await assertChromaReachable(chromaArgs, hbMs);
   } catch (e) {
     const summary = formatChromaConnectionSummary(chromaArgs);
-    console.error(
-      `❌ Aucun serveur Chroma sur ${summary} (${(e && e.message) || e}).\n` +
-        '   1) Ouvrez **Docker Desktop** et attendez qu’il soit prêt.\n' +
+    const host = String(chromaArgs.host || '').toLowerCase();
+    const isLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    const remoteHints =
+      '   • **Hébergement distant (ex. Render)** : le service peut être en veille — ouvrez l’URL dans un navigateur ' +
+      `(${summary}/api/v2/heartbeat), attendez la réponse, puis relancez l’ingestion.\n` +
+      '   • Augmentez le délai si besoin : `$env:RAG_CHROMA_HEARTBEAT_MS="180000"` (3 min) puis `npm run rag:ingest`.\n';
+    const localHints =
+      '   1) Ouvrez **Docker Desktop** et attendez qu’il soit prêt.\n' +
         '   2) Depuis la racine du projet : **npm run chroma:up** (ou : docker-compose up -d chromadb).\n' +
         '   3) Vérifiez : http://127.0.0.1:8000/api/v2/heartbeat dans le navigateur ou curl.\n' +
-        '   4) Relancez : npm run rag:ingest'
+        '   4) Relancez : npm run rag:ingest\n';
+    console.error(
+      `❌ Aucun serveur Chroma sur ${summary} (${(e && e.message) || e}).\n` +
+        (chromaArgs.ssl && !isLocal ? remoteHints : !isLocal ? remoteHints + localHints : localHints)
     );
     process.exit(1);
   }

@@ -7,6 +7,7 @@ const {
 } = require('./chroma-client-url');
 const {
   assertChromaReachable,
+  chromaHeartbeatTimeoutMs,
   ensureChromaTenantAndDatabase,
   createChromaClient,
 } = require('./chroma-bootstrap');
@@ -87,7 +88,7 @@ class RetrievalService {
 
       for (const chromaArgs of candidates) {
         try {
-          await assertChromaReachable(chromaArgs, 6000);
+          await assertChromaReachable(chromaArgs, chromaHeartbeatTimeoutMs(chromaArgs));
           await ensureChromaTenantAndDatabase(chromaArgs);
           this.client = createChromaClient(chromaArgs);
           try {
@@ -125,7 +126,7 @@ class RetrievalService {
         if (restored) {
           for (const chromaArgs of candidates) {
             try {
-              await assertChromaReachable(chromaArgs, 6000);
+              await assertChromaReachable(chromaArgs, chromaHeartbeatTimeoutMs(chromaArgs));
               await ensureChromaTenantAndDatabase(chromaArgs);
               this.client = createChromaClient(chromaArgs);
               this.collection = await this.client.getCollection({
