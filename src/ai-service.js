@@ -388,6 +388,8 @@ class AIService {
       [/defisnir/gi, 'definir'],
       [/contenerisation/gi, 'conteneurisation'],
       [/contenurisation/gi, 'conteneurisation'],
+      [/conteunerisation/gi, 'conteneurisation'],
+      [/conteuneurisation/gi, 'conteneurisation'],
       [/dev ops/gi, 'devops'],
       [/devosp/gi, 'devops'],
       [/kubernets/gi, 'kubernetes'],
@@ -445,8 +447,25 @@ class AIService {
 
   buildRetrievalQuery(question) {
     const q = this.stripAccents((question || '').toLowerCase());
-    if (q.includes('conteneurisation') || q.includes('docker')) {
-      return `${question} docker image container dockerfile build run registry`;
+    const containerTopic =
+      q.includes('conteneurisation') ||
+      q.includes('contenurisation') ||
+      q.includes('conteunerisation') ||
+      q.includes('containerisation') ||
+      /\bconteneurs?\b/.test(q) ||
+      q.includes('docker') ||
+      q.includes('kubernetes') ||
+      /\bk8s\b/.test(q) ||
+      q.includes('dockerfile');
+    const virtTopic =
+      q.includes('virtualisation') ||
+      q.includes('virtualization') ||
+      q.includes('hyperviseur') ||
+      q.includes('hypervisor') ||
+      /\bvm\b/.test(q) ||
+      q.includes('machine virtuelle');
+    if (containerTopic || virtTopic) {
+      return `${question} docker conteneurisation container virtualisation hyperviseur machine virtuelle kubernetes image`;
     }
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) {
       return `${question} integration continue deploiement continu pipeline build test release`;
@@ -462,7 +481,20 @@ class AIService {
 
   detectIntent(question) {
     const q = this.stripAccents((question || '').toLowerCase());
-    if (q.includes('conteneurisation') || q.includes('docker')) return 'containerization';
+    if (
+      q.includes('conteneurisation') ||
+      q.includes('contenurisation') ||
+      q.includes('conteunerisation') ||
+      /\bconteneurs?\b/.test(q) ||
+      q.includes('docker') ||
+      q.includes('kubernetes') ||
+      /\bk8s\b/.test(q)
+    ) {
+      return 'containerization';
+    }
+    if (q.includes('virtualisation') || q.includes('hyperviseur') || /\bvm\b/.test(q)) {
+      return 'containerization';
+    }
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) return 'cicd';
     if (q.includes('monitoring') || q.includes('metrique')) return 'monitoring';
     if (q.includes('devops')) return 'devops';
@@ -551,10 +583,14 @@ class AIService {
     if (alphaRatio < 0.55) return false;
     if (digitRatio > 0.18) return false;
 
-    // Une phrase utile doit contenir au moins un verbe/fréquence de langage.
-    if (!/(est|sont|permet|utilise|automati|deploi|livraison|monitor|pipeline|collaboration|culture|tests?)/i.test(text)) {
-      return false;
-    }
+    // Une phrase utile : verbes courants OU vocabulaire technique (PDFs bilingues / listes à puces).
+    const hasVerb = /(est|sont|permet|utilise|automati|deploi|livraison|monitor|pipeline|collaboration|culture|tests?|inclut|offre|definit|gere|partage)/i.test(
+      text
+    );
+    const hasTech = /(conteneur|docker|kubernetes|k8s|virtualis|hyperviseur|vm\b|image|registry|namespace|cgroup|orchestr|microservice|cloud|aws|azure|gcp)/i.test(
+      text
+    );
+    if (!hasVerb && !hasTech) return false;
     return true;
   }
 

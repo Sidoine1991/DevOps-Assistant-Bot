@@ -166,25 +166,107 @@ class RetrievalService {
     return null;
   }
 
+  stripAccents(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  /** Sous-chaînes pour whereDocument ($contains) si la recherche vectorielle ne renvoie rien. */
+  keywordSearchTermsFromQuery(query) {
+    const q = this.stripAccents(String(query || '').toLowerCase());
+    const terms = [];
+    const add = (t) => {
+      if (t && !terms.includes(t)) terms.push(t);
+    };
+    if (/conten|docker|k8s|kubernetes|dockerfile|image docker|container/.test(q)) {
+      add('docker');
+      add('Docker');
+      add('conteneur');
+      add('Conteneur');
+      add('container');
+      add('Container');
+    }
+    if (/virtual|hypervis|\bvm\b|machine virtuelle|virtualis/.test(q)) {
+      add('virtual');
+      add('Virtual');
+      add('hyperviseur');
+      add('Hyperviseur');
+      add('VM');
+    }
+    if (/devops|\bci\b|\bcd\b|pipeline|deploi|deploy|integrat/.test(q)) {
+      add('DevOps');
+      add('CI/CD');
+      add('pipeline');
+      add('Pipeline');
+    }
+    return terms.slice(0, 14);
+  }
+
+  async retrieveKeywordFallbackChunks(query, limit) {
+    const terms = this.keywordSearchTermsFromQuery(query);
+    if (terms.length === 0) return [];
+    const out = [];
+    const seen = new Set();
+    const perTerm = Math.min(40, Math.max(limit, 20));
+    for (const term of terms) {
+      try {
+        const r = await this.collection.get({
+          whereDocument: { $contains: term },
+          limit: perTerm,
+          include: ['documents', 'metadatas'],
+        });
+        const docs = r.documents || [];
+        const metas = r.metadatas || [];
+        for (let i = 0; i < docs.length; i++) {
+          const doc = docs[i];
+          if (doc == null || !String(doc).trim()) continue;
+          const meta = metas[i] || {};
+          const fp = `${meta.source || ''}:${String(doc).slice(0, 160)}`;
+          if (seen.has(fp)) continue;
+          seen.add(fp);
+          out.push({
+            content: doc,
+            metadata: meta,
+            distance: 0.5 + out.length * 0.0001,
+          });
+          if (out.length >= limit) return out;
+        }
+      } catch (e) {
+        console.warn(`RAG whereDocument "${term}" ignoré:`, (e && e.message) || e);
+      }
+    }
+    return out;
+  }
+
   async retrieveRelevantChunks(query, topK = this.defaultTopK) {
     await this.initialize();
     if (!this.enabled || !this.collection) return [];
 
     try {
-      const overFetch = Math.max(topK * 3, topK + 8);
+      const overFetch = Math.max(topK * 4, topK + 12);
       const results = await this.collection.query({ queryTexts: [query], nResults: overFetch });
 
       const documents = results.documents?.[0] || [];
       const metadatas = results.metadatas?.[0] || [];
       const distances = results.distances?.[0] || [];
 
-      const flat = documents
+      let flat = documents
         .map((doc, idx) => ({
           content: doc,
           metadata: metadatas[idx] || {},
           distance: typeof distances[idx] === 'number' ? distances[idx] : Number.MAX_SAFE_INTEGER,
         }))
         .filter((item) => item.content != null && String(item.content).trim().length > 0);
+
+      if (flat.length === 0) {
+        flat = await this.retrieveKeywordFallbackChunks(query, overFetch);
+        if (flat.length > 0) {
+          console.log(
+            `RAG: recherche plein-texte (whereDocument) — ${flat.length} passage(s) pour « ${String(query).slice(0, 90)}… »`
+          );
+        }
+      }
 
       if (flat.length === 0) return [];
 
