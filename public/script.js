@@ -842,6 +842,109 @@ function renderConversationHistoryList() {
     });
 }
 
+/**
+ * Échappe le HTML puis applique un sous-ensemble Markdown lisible dans le chat :
+ * **gras**, *italique* (hors puces déjà traitées en listes), liens http(s), chemins /generated/
+ */
+function escapeHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function applyInlineMarkdown(escapedLine) {
+    let t = escapedLine;
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    t = t.replace(/\*([^\s*<>])([^*]*)\*/g, '<em>$1$2</em>');
+    t = t.replace(/(\/generated\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    t = t.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    return t;
+}
+
+function renderBotMarkdown(raw) {
+    const lines = String(raw ?? '').split(/\r?\n/);
+    let html = '';
+    let ulOpen = false;
+    let olOpen = false;
+    const closeLists = () => {
+        if (ulOpen) {
+            html += '</ul>';
+            ulOpen = false;
+        }
+        if (olOpen) {
+            html += '</ol>';
+            olOpen = false;
+        }
+    };
+    const para = [];
+
+    const flushPara = () => {
+        if (para.length === 0) return;
+        closeLists();
+        const inner = para.map((l) => applyInlineMarkdown(escapeHtml(l))).join('<br>');
+        html += `<p>${inner}</p>`;
+        para.length = 0;
+    };
+
+    for (const line of lines) {
+        const trimmed = line.trimEnd();
+        if (trimmed.trim() === '') {
+            flushPara();
+            closeLists();
+            continue;
+        }
+        const head = trimmed.trimStart();
+        if (/^---+$/u.test(head) || /^___+$/u.test(head)) {
+            flushPara();
+            closeLists();
+            html += '<hr class="message-hr">';
+            continue;
+        }
+        const h = head.match(/^(#{1,3})\s+(.+)$/);
+        if (h) {
+            flushPara();
+            closeLists();
+            const n = h[1].length;
+            const tag = n === 1 ? 'h2' : n === 2 ? 'h3' : 'h4';
+            html += `<${tag} class="message-md-heading">${applyInlineMarkdown(escapeHtml(h[2]))}</${tag}>`;
+            continue;
+        }
+        const num = head.match(/^\s*(\d+)\.\s+(.+)$/);
+        const bullet = head.match(/^\s*[-*]\s+(.+)$/);
+        if (num) {
+            flushPara();
+            if (ulOpen) {
+                html += '</ul>';
+                ulOpen = false;
+            }
+            if (!olOpen) {
+                html += '<ol>';
+                olOpen = true;
+            }
+            html += `<li>${applyInlineMarkdown(escapeHtml(num[2]))}</li>`;
+        } else if (bullet) {
+            flushPara();
+            if (olOpen) {
+                html += '</ol>';
+                olOpen = false;
+            }
+            if (!ulOpen) {
+                html += '<ul>';
+                ulOpen = true;
+            }
+            html += `<li>${applyInlineMarkdown(escapeHtml(bullet[1]))}</li>`;
+        } else {
+            closeLists();
+            para.push(trimmed);
+        }
+    }
+    flushPara();
+    closeLists();
+    return html || '<p></p>';
+}
+
 // Ajouter un message au chat
 function addMessage(text, sender, timestamp, sources = []) {
     const messageDiv = document.createElement('div');
@@ -854,9 +957,7 @@ function addMessage(text, sender, timestamp, sources = []) {
     const content = document.createElement('div');
     content.className = 'message-content';
     
-    // Convertir les sauts de ligne en <br>
-    const formattedText = text.replace(/\n/g, '<br>');
-    content.innerHTML = `<p>${formattedText}</p>`;
+    content.innerHTML = renderBotMarkdown(text);
     
     // Ajouter les sources si présentes
     if (sources && sources.length > 0) {
@@ -899,23 +1000,6 @@ function addMessage(text, sender, timestamp, sources = []) {
         messageDiv.style.transform = 'translateY(0)';
     }, 10);
     currentTranscript.push({ sender, text, timestamp });
-}
-
-// Formatage des messages (emojis, liens, etc.)
-function formatMessage(text) {
-    let formatted = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/^### (.*)$/gm, '<h4>$1</h4>')
-        .replace(/^## (.*)$/gm, '<h3>$1</h3>')
-        .replace(/^# (.*)$/gm, '<h2>$1</h2>')
-        .replace(/^- (.*)$/gm, '• $1')
-        .replace(/\n/g, '<br>')
-        .replace(/(\/generated\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-
-    return formatted;
 }
 
 // Mise à jour du statut

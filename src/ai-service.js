@@ -61,6 +61,7 @@ class AIService {
       await this.retrievalService.initialize();
       const provider = context.provider || 'openai';
       const normalizedQuestion = this.normalizeUserQuestion(message);
+      const focusQuestion = this.stripLeadingGreeting(normalizedQuestion);
       const attachments = Array.isArray(context.attachments) ? context.attachments : [];
       const hasImageAttachment = attachments.some((a) => a?.type && String(a.type).startsWith('image/'));
 
@@ -81,7 +82,7 @@ class AIService {
       let ragContext = '';
       if (this.retrievalService && this.retrievalService.enabled) {
         ragChunks = await this.retrievalService.retrieveRelevantChunks(
-          this.buildRetrievalQuery(normalizedQuestion),
+          this.buildRetrievalQuery(focusQuestion),
           Number(process.env.RAG_RETRIEVAL_TOP_K || 16)
         );
         if (ragChunks.length > 0) {
@@ -202,7 +203,7 @@ class AIService {
           }
           return this.appendSources(body, []);
         }
-        return this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources);
+        return this.buildLocalRagResponse(normalizedQuestion, focusQuestion, ragChunks, grounding.sources);
       }
 
       // Utiliser le provider spécifié ou OpenAI par défaut
@@ -225,7 +226,7 @@ class AIService {
       } else {
         console.log('Aucun provider IA disponible, utilisation du fallback');
         return ragChunks.length > 0
-          ? this.buildLocalRagResponse(normalizedQuestion, ragChunks, grounding.sources)
+          ? this.buildLocalRagResponse(normalizedQuestion, focusQuestion, ragChunks, grounding.sources)
           : this.appendSources(this.getFallbackResponse(normalizedQuestion), grounding.sources);
       }
     } catch (error) {
@@ -402,6 +403,13 @@ class AIService {
     return cleaned;
   }
 
+  /** Retire une salutation en tête pour analyser la question (intent, RAG, définitions). */
+  stripLeadingGreeting(text = '') {
+    return String(text || '')
+      .replace(/^(bonjour|salut|coucou|hello|hey|bonsoir|bonne journée|bonne soirée)[\s,!.…\-:]+/gi, '')
+      .trim();
+  }
+
   isSmallTalk(message = '') {
     const raw = String(message || '').trim();
     if (!raw) return true;
@@ -486,7 +494,7 @@ class AIService {
     if (q.includes('devops')) {
       return `${question} culture devops collaboration automation feedback ci cd`;
     }
-    if (/\baws\b|amazon web services/.test(q)) {
+    if (/\baws\b|amazon web services?\b/i.test(q)) {
       return `${question} AWS Amazon Web Services cloud public services gérés EC2 S3 Lambda IAM région console`;
     }
     return question;
@@ -510,7 +518,7 @@ class AIService {
     }
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) return 'cicd';
     if (q.includes('monitoring') || q.includes('metrique')) return 'monitoring';
-    if (/\baws\b|amazon web services/.test(q)) return 'aws_cloud';
+    if (/\baws\b|amazon web services?\b/i.test(q)) return 'aws_cloud';
     if (q.includes('devops')) return 'devops';
     return 'generic';
   }
@@ -583,7 +591,7 @@ class AIService {
       queryTokens = [...new Set([...queryTokens, ...boost])];
     }
 
-    const awsishQuery = /\baws\b|amazon web services/.test(qNorm);
+    const awsishQuery = /\baws\b|amazon web services?\b/i.test(qNorm);
     if (awsishQuery) {
       const boost = [
         'aws',
@@ -623,7 +631,12 @@ class AIService {
         if (dockerishQuery && /docker|dockerfile|conteneur|container|\bimage\b|compose|registry|ecr|kubernetes|pod|build|scanning container/i.test(sentence)) {
           score += 3;
         }
-        if (awsishQuery && /\bAWS\b|Amazon Web Services|AWS\s+\w+|Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|orchestration|console AWS|instance Amazon/i.test(sentence)) {
+        if (
+          awsishQuery &&
+          /\bAWS\b|Amazon Web Services|AWS\s+\w+|Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|CodeGuru|CloudWatch|Elastic Beanstalk|orchestration|console AWS|instance Amazon|conteneurs tels qu/i.test(
+            sentence
+          )
+        ) {
           score += 3;
         }
         if (score > 0) {
@@ -648,6 +661,11 @@ class AIService {
   isSentenceUsable(sentence) {
     const text = String(sentence || '').trim();
     if (!text) return false;
+
+    const firstWord = (text.match(/^(\S+)/) || [])[1] || '';
+    if (firstWord.length === 1 && /^[a-z]$/i.test(firstWord)) {
+      return false;
+    }
 
     // Écarte les extraits de table des matières, références brutes, et lignes fragmentées.
     if (/^\d+[:.)-]/.test(text)) return false;
@@ -716,17 +734,17 @@ class AIService {
   prioritizeAwsSnippets(relevant, message = '') {
     if (!relevant || relevant.length === 0) return relevant;
     const q = this.stripAccents((message || '').toLowerCase());
-    if (!/\baws\b|amazon web services/.test(q)) return relevant;
+    if (!/\baws\b|amazon web services?\b/i.test(q)) return relevant;
     const tech = relevant.filter(
       (r) =>
-        /Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|Amazon ECR|\bAWS\b|orchestration|console|instance Amazon|IDE est basé sur le cloud/i.test(
+        /Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|Amazon ECR|CodeGuru|CloudWatch|\bAWS\b|orchestration|console|instance Amazon|IDE est basé sur le cloud|Elastic Beanstalk|conteneurs tels qu/i.test(
           r.sentence
         ) && !this.isLegalOrBoilerplateSentence(r.sentence)
     );
-    return tech.length >= 2 ? tech : relevant;
+    return tech.length >= 1 ? tech : relevant;
   }
 
-  buildIntentAnswer(intent, message) {
+  buildIntentAnswer(intent, focusSnippet = '') {
     switch (intent) {
       case 'aws_cloud':
         return '**AWS** (Amazon Web Services) est le **cloud public d’Amazon** : un catalogue très large de **services managés** (calcul comme EC2 ou Lambda, stockage comme S3, bases de données, réseau avec VPC, identité avec IAM, conteneurs avec ECS/EKS, etc.). Vous consommez la capacité **à la demande**, dans des **régions** du monde, sans gérer les datacenters physiques. La facturation est en général **à l’usage** ; la sécurité et la conformité sont **partagées** entre AWS et le client (modèle de responsabilité partagée).';
@@ -738,12 +756,19 @@ class AIService {
         return 'Le monitoring fiable combine métriques, logs et alertes. Surveillez en priorité la latence, le taux d’erreur et la saturation CPU/mémoire/disque.';
       case 'devops':
         return 'La culture DevOps repose sur la collaboration entre Dev et Ops, l’automatisation des livraisons et l’amélioration continue basée sur le feedback terrain.';
-      default:
-        return `**Réponse courte** : les passages numérotés ci-dessous sont extraits de vos cours et triés par pertinence approximative avec « ${String(message).slice(0, 120)}${String(message).length > 120 ? '…' : ''} ». Lisez-les comme **illustrations** ou précisions, pas comme une seule phrase continue.`;
+      default: {
+        const s = String(focusSnippet || '').replace(/\s+/g, ' ').trim();
+        const short = s.length > 130 ? `${s.slice(0, 130)}…` : s;
+        return `**Réponse courte** : les passages numérotés ci-dessous prolongent votre question (« ${short} »), triés par ressemblance avec le texte des PDF. Ce ne sont pas une seule phrase rédigée par le bot : lisez chaque point comme une **citation** possiblement utile.`;
+      }
     }
   }
 
-  buildLocalRagResponse(message, ragChunks = [], externalSources = []) {
+  /**
+   * @param {string} displayMessage - phrase normalisée affichée telle quelle (peut commencer par « Bonjour »)
+   * @param {string} focusMessage - même phrase sans salutation en tête (intent, extraction)
+   */
+  buildLocalRagResponse(displayMessage, focusMessage, ragChunks = [], externalSources = []) {
     if (!ragChunks || ragChunks.length === 0) {
       return this.appendSources(
         'Je suis en mode local (RAG) mais je n’ai trouvé aucun passage pertinent dans les documents. Reformule la question avec des mots DevOps plus précis (ex: CI/CD, Docker, pipeline, monitoring).',
@@ -751,22 +776,28 @@ class AIService {
       );
     }
 
-    const lower = (message || '').toLowerCase().trim();
+    const questionDisplay = String(displayMessage || '').replace(/\s+/g, ' ').trim();
+    const focus = String(focusMessage != null ? focusMessage : this.stripLeadingGreeting(questionDisplay)).trim();
+
+    const lower = (focus || '').toLowerCase().trim();
     if (['bonjour', 'salut', 'hello', 'bonsoir'].includes(lower)) {
       const greet = 'Bonjour 👋 Je suis prêt à vous aider sur le DevOps (CI/CD, Docker, monitoring, Kubernetes, troubleshooting). Posez-moi votre question précise.';
       return this.appendSources(greet, externalSources);
     }
 
-    const definitionStyle = this.isDefinitionStyleQuestion(message);
+    const definitionStyle = this.isDefinitionStyleQuestion(focus);
     const snippetLimit = definitionStyle ? 6 : 10;
-    let relevant = this.extractRelevantSentences(message, ragChunks, snippetLimit);
-    const intent = this.detectIntent(message);
-    const proceduralDocker = this.isDockerSetupQuestion(message) && intent === 'containerization';
+    let relevant = this.extractRelevantSentences(focus, ragChunks, snippetLimit);
+    let intent = this.detectIntent(focus);
+    if (intent === 'generic' && /\baws\b|amazon web services?\b/i.test(this.stripAccents(focus.toLowerCase()))) {
+      intent = 'aws_cloud';
+    }
+    const proceduralDocker = this.isDockerSetupQuestion(focus) && intent === 'containerization';
     if (proceduralDocker) {
-      relevant = this.prioritizeDockerSnippets(relevant, message);
+      relevant = this.prioritizeDockerSnippets(relevant, focus);
     }
     if (intent === 'aws_cloud') {
-      relevant = this.prioritizeAwsSnippets(relevant, message);
+      relevant = this.prioritizeAwsSnippets(relevant, focus);
     }
     if (relevant.length === 0) {
       const fallback = this.buildIntentFallback(intent);
@@ -794,7 +825,7 @@ class AIService {
 
     const coreAnswer = proceduralDocker
       ? this.buildDockerSetupCoreAnswer()
-      : this.buildIntentAnswer(intent, message);
+      : this.buildIntentAnswer(intent, focus);
     let explanationBlock = proceduralDocker
       ? '**Extraits des cours (complément)** — privilégiez les points qui citent Docker, images ou registres ; ignorez le reste si hors sujet.'
       : definitionStyle
@@ -813,7 +844,13 @@ class AIService {
     const planAndPractices = definitionStyle
       ? '\n\n**Pour aller plus loin** : documentation officielle (ex. docs.aws.amazon.com pour AWS), essai sur un compte gratuit ou lab, puis gardez une feuille de route simple (compte, région, IAM minimal, premier service).'
       : `\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.`;
-    const ragAnswer = `${intentLabel}\n\n${coreAnswer}\n\n${explanationBlock}\n\n**Passages issus des documents :**\n${bulletPoints}${planAndPractices}\n\nSources utilisees:\n- ${sources}`;
+    const cadre =
+      intent === 'aws_cloud'
+        ? '**Lien avec votre question :** vous demandez ce qu’est **Amazon Web Services (AWS)** ; le texte suivant définit ce terme, puis les numéros citent ce que vos PDF en disent concrètement (services, outils).'
+        : definitionStyle
+          ? '**Lien avec votre question :** la première partie répond à votre formulation ; les numéros sont des extraits du corpus qui peuvent l’illustrer.'
+          : '**Lien avec votre question :** synthèse ci-dessous, puis extraits de documents triés par pertinence.';
+    const ragAnswer = `**Votre question :** ${questionDisplay}\n\n${cadre}\n\n**${intentLabel}**\n\n${coreAnswer}\n\n${explanationBlock}\n\n**Passages issus des documents :**\n${bulletPoints}${planAndPractices}\n\nSources utilisees:\n- ${sources}`;
     return this.appendSources(ragAnswer, externalSources);
   }
 

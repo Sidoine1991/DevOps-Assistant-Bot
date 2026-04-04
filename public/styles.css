@@ -192,6 +192,12 @@ body {
     color: white;
 }
 
+.user-message .message-content a {
+    color: rgba(255, 255, 255, 0.95);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
 .message-content p {
     margin-bottom: 0.5rem;
     line-height: 1.5;
@@ -201,13 +207,66 @@ body {
     margin-bottom: 0;
 }
 
-.message-content ul {
-    margin-left: 1.5rem;
-    margin-bottom: 0.5rem;
+.message-content ul,
+.message-content ol {
+    margin: 0.35rem 0 0.5rem 1.35rem;
+    padding-left: 0.35rem;
+    line-height: 1.5;
 }
 
 .message-content li {
+    margin-bottom: 0.35rem;
+}
+
+.message-content li ul,
+.message-content li ol {
+    margin-top: 0.25rem;
     margin-bottom: 0.25rem;
+}
+
+.message-content strong {
+    font-weight: 600;
+}
+
+.message-content em {
+    font-style: italic;
+}
+
+.message-md-heading {
+    margin: 0.65rem 0 0.35rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.message-content h2.message-md-heading {
+    font-size: 1.05rem;
+}
+
+.message-content h3.message-md-heading {
+    font-size: 1rem;
+}
+
+.message-content h4.message-md-heading {
+    font-size: 0.95rem;
+}
+
+.message-hr {
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+    margin: 0.75rem 0;
+}
+
+.user-message .message-hr {
+    border-top-color: rgba(255, 255, 255, 0.35);
+}
+
+.user-message .message-content strong {
+    font-weight: 700;
+}
+
+.user-message .message-content em {
+    font-style: italic;
+    opacity: 0.95;
 }
 
 .message-sources {
