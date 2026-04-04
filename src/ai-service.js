@@ -15,9 +15,6 @@ class AIService {
       fs.mkdirSync(this.generatedImageDir, { recursive: true });
     }
     this.initializeProviders();
-    this.retrievalService.initialize().catch((err) => {
-      console.error('Erreur initialisation retrieval service:', err);
-    });
   }
 
   initializeProviders() {
@@ -61,6 +58,7 @@ class AIService {
 
   async getDevOpsResponse(message, context = {}) {
     try {
+      await this.retrievalService.initialize();
       const provider = context.provider || 'openai';
       const normalizedQuestion = this.normalizeUserQuestion(message);
       const attachments = Array.isArray(context.attachments) ? context.attachments : [];
@@ -153,6 +151,19 @@ class AIService {
             );
 
           if (ragUp) {
+            const genericFb = "Je ne connais pas encore une réponse fiable";
+            const fb = this.getFallbackResponse(normalizedQuestion);
+            if (fb && !fb.startsWith(genericFb)) {
+              let body =
+                '📚 **Aucun extrait PDF pertinent pour cette formulation.**\n\n' +
+                `${fb}\n\n` +
+                '_Pour citer vos documents, précisez le contexte ou complétez l’ingestion._';
+              if (metricsExtra) {
+                body +=
+                  '\n\n_**Note :** en mode corpus seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
+              }
+              return this.appendSources(body, []);
+            }
             const intent = this.detectIntent(normalizedQuestion);
             if (intent !== 'generic') {
               const quick = this.buildIntentAnswer(intent, normalizedQuestion);
@@ -166,36 +177,21 @@ class AIService {
               }
               return this.appendSources(body, []);
             }
-            const fb = this.getFallbackResponse(normalizedQuestion);
-            const genericFb = "Je ne connais pas encore une réponse fiable";
-            if (fb && !fb.startsWith(genericFb)) {
-              let body =
-                '📚 **Aucun extrait PDF pertinent pour cette formulation.**\n\n' +
-                `${fb}\n\n` +
-                '_Pour citer vos documents, précisez le contexte ou complétez l’ingestion._';
-              if (metricsExtra) {
-                body +=
-                  '\n\n_**Note :** en mode corpus seul, je n’ai pas accès aux métriques réelles de votre machine. Pour une aide hors documents indexés, choisissez **OpenAI** ou **Gemini** dans Configuration._';
-              }
-              return this.appendSources(body, []);
-            }
           }
 
           // Chroma injoignable : réponses courtes DevOps quand même (éviter de bloquer sur le seul message « configurez CHROMA »).
+          const noteHorsCorpus =
+            '\n\n_Configuration → **Gemini** ou **OpenAI** pour des réponses sans index PDF, ou **CHROMA_URL** + `npm run rag:ingest` pour vos documents._';
           if (!ragUp) {
             const fb = this.getFallbackResponse(normalizedQuestion);
             const genericFb = "Je ne connais pas encore une réponse fiable";
             if (fb && !fb.startsWith(genericFb)) {
-              const noteChroma =
-                '\n\n_**Note :** la base documentaire (Chroma) n’est pas disponible sur ce serveur. Pour citer vos PDF ou un modèle cloud, définissez `CHROMA_URL` ou choisissez **Gemini/OpenAI** dans Configuration._';
-              return this.appendSources(fb + noteChroma, []);
+              return this.appendSources(fb + noteHorsCorpus, []);
             }
             const intent = this.detectIntent(normalizedQuestion);
             if (intent !== 'generic') {
               const quick = this.buildIntentAnswer(intent, normalizedQuestion);
-              const noteChroma =
-                '\n\n_**Note :** Chroma n’est pas joignable ici — même conseil : `CHROMA_URL` ou **Gemini/OpenAI** dans Configuration._';
-              return this.appendSources(quick + noteChroma, []);
+              return this.appendSources(quick + noteHorsCorpus, []);
             }
           }
 
@@ -393,6 +389,8 @@ class AIService {
       [/contenerisation/gi, 'conteneurisation'],
       [/contenurisation/gi, 'conteneurisation'],
       [/dev ops/gi, 'devops'],
+      [/devosp/gi, 'devops'],
+      [/kubernets/gi, 'kubernetes'],
       [/\s+/g, ' '],
     ];
 
@@ -403,14 +401,21 @@ class AIService {
   }
 
   isSmallTalk(message = '') {
-    const lower = String(message || '').trim().toLowerCase();
-    if (!lower) return true;
-    if (lower.length <= 3) return true;
+    const raw = String(message || '').trim();
+    if (!raw) return true;
+    const lower = raw.toLowerCase();
+    const q = this.stripAccents(lower).replace(/\s+/g, ' ').trim();
+    if (q.length <= 2) return true;
     const smallTalk = new Set([
       'cc', 'coucou', 'salut', 'hello', 'hi', 'hey', 'bonjour', 'bonsoir',
-      'yo', 'svp', 'stp', 'merci', 'ok', 'oki', 'test'
+      'yo', 'svp', 'stp', 'merci', 'ok', 'oki', 'test', 'bisous', 'a plus', 'au revoir',
     ]);
-    return smallTalk.has(lower);
+    if (smallTalk.has(q)) return true;
+    if (/^(bonjour|bonsoir|salut|coucou|hello|hi)\b[!?.…\s]*$/i.test(q)) return true;
+    if (/^comment\s+(ça|ca)\s+va\b/i.test(q) || /^comment\s+tu\s+vas\b/i.test(q)) return true;
+    if (/^comment\s+allez[- ]vous\b/i.test(q) || /^ça\s+va\b/i.test(q) || /^ca\s+va\b/i.test(q)) return true;
+    if (/^tu\s+vas\s+bien\b/i.test(q) || /^vous\s+allez\s+bien\b/i.test(q)) return true;
+    return false;
   }
 
   stripAccents(str) {
@@ -420,14 +425,22 @@ class AIService {
   }
 
   isBotMetaQuestion(message = '') {
-    const q = this.stripAccents(String(message || '').trim().toLowerCase());
-    const c = q.replace(/['\u2019]/g, '').replace(/\s+/g, '');
-    const asksCreator =
-      (c.includes('qui') && (c.includes('cree') || c.includes('creer')) && (c.includes('ta') || c.includes('as'))) ||
+    const q = this.stripAccents(String(message || '').trim().toLowerCase())
+      .replace(/['\u2019]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!q) return false;
+    if (/qui\s+(t\s*a|vous\s+a|t\s+as)\s+(cree|creer|invente|develop|fait)/.test(q)) return true;
+    if (/qui\s+a\s+(cree|creer|invente|develop)\s+(ce\s+)?(bot|assistant|toi)/.test(q)) return true;
+    if (/c\s*est\s+qui\s+(le\s+)?(createur|auteur|developpeur|dev)/.test(q)) return true;
+    if (/createur\s+du\s+bot/.test(q) || /qui\s+es[- ]tu\b/.test(q)) return true;
+    if (/\bqu\s*est[- ]ce\s+que\s+tu\s+es\b/.test(q)) return true;
+    const c = q.replace(/\s+/g, '');
+    return (
       c.includes('quiestu') ||
       c.includes('quelesttonnom') ||
-      (c.includes('questce') && c.includes('bot'));
-    return asksCreator;
+      (c.includes('questce') && c.includes('bot'))
+    );
   }
 
   buildRetrievalQuery(question) {
@@ -636,6 +649,7 @@ Réponds toujours en français et de manière helpful.`;
   getFallbackResponse(message) {
     const lowerMessage = this.stripAccents((message || '').toLowerCase());
     const relaxed = lowerMessage.replace(/['\u2019-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const topicOnly = relaxed.replace(/[!?.…]+$/u, '').trim();
 
     if (
       lowerMessage.includes('defini ci') ||
@@ -646,6 +660,8 @@ Réponds toujours en français et de manière helpful.`;
     }
 
     if (
+      topicOnly === 'devops' ||
+      topicOnly === 'dev ops' ||
       lowerMessage.includes('defini devops') ||
       lowerMessage.includes('definis devops') ||
       lowerMessage.includes('definir devops') ||

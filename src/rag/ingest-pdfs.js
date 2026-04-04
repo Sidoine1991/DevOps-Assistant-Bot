@@ -7,7 +7,25 @@ const { parseChromaConnection, formatChromaConnectionSummary } = require('./chro
 
 require('dotenv').config();
 
-const DATA_DIR = process.env.RAG_DATA_DIR || path.join(process.cwd(), 'data_course');
+/** Dossiers PDF : RAG_DATA_DIRS (liste séparée par virgules) prioritaire, sinon RAG_DATA_DIR ou data_course. */
+function resolvePdfDirs() {
+  const multi = (process.env.RAG_DATA_DIRS && String(process.env.RAG_DATA_DIRS).trim()) || '';
+  if (multi) {
+    return multi
+      .split(',')
+      .map((s) => path.resolve(process.cwd(), s.trim()))
+      .filter((d) => {
+        if (!fs.existsSync(d)) {
+          console.warn('⚠️ Dossier RAG ignoré (inexistant):', d);
+          return false;
+        }
+        return true;
+      });
+  }
+  const single = process.env.RAG_DATA_DIR || path.join(process.cwd(), 'data_course');
+  const resolved = path.resolve(process.cwd(), single);
+  return fs.existsSync(resolved) ? [resolved] : [];
+}
 const CHROMA_COLLECTION = process.env.RAG_COLLECTION || 'devops_courses';
 const CHROMA_PERSIST_DIR = process.env.RAG_CHROMA_DIR || path.join(__dirname, '../../chroma_db');
 const MAX_CHUNKS_PER_DOC = Number(process.env.RAG_MAX_CHUNKS_PER_DOC || 1200);
@@ -88,14 +106,18 @@ function getEmbeddingFunction() {
 
 async function main() {
   console.log('🚀 Ingestion RAG démarrée');
-  console.log('Dossier PDF:', DATA_DIR);
+  const dataDirs = resolvePdfDirs();
+  console.log('Dossier(s) PDF:', dataDirs.join(', ') || '(aucun)');
 
-  if (!fs.existsSync(DATA_DIR)) {
-    console.error('❌ Dossier de données introuvable:', DATA_DIR);
+  if (dataDirs.length === 0) {
+    console.error(
+      '❌ Aucun dossier de données valide. Créez data_course/ et y placez des PDF, ou définissez RAG_DATA_DIR / RAG_DATA_DIRS.'
+    );
     process.exit(1);
   }
 
-  const pdfFiles = await loadPdfFiles(DATA_DIR);
+  const pdfLists = await Promise.all(dataDirs.map((dir) => loadPdfFiles(dir)));
+  const pdfFiles = pdfLists.flat();
   if (pdfFiles.length === 0) {
     console.warn('⚠️ Aucun PDF trouvé dans', DATA_DIR);
     process.exit(0);

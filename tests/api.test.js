@@ -39,6 +39,7 @@ describe('API Tests', () => {
       expect(response.body.rag).toHaveProperty('enabled');
       expect(response.body.rag).toHaveProperty('operational');
       expect(response.body.rag).toHaveProperty('chromaUrlConfigured');
+      expect(response.body.rag).toHaveProperty('indexedChunks');
     });
   });
 

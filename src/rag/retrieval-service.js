@@ -24,6 +24,7 @@ class RetrievalService {
     this.gemini = null;
     this.embeddingFunction = new DefaultEmbeddingFunction();
     this.backupManager = new ChromaBackupManager();
+    this._initPromise = null;
   }
 
   getChromaClientCandidates() {
@@ -59,9 +60,19 @@ class RetrievalService {
     );
   }
 
+  /**
+   * Connexion Chroma + chargement de la collection. Idempotent : les appels suivants
+   * réutilisent la même promesse (évite courses au démarrage / premières questions).
+   */
   async initialize() {
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this._initializeOnce();
+    return this._initPromise;
+  }
+
+  async _initializeOnce() {
     if (!this.enabled) {
-      console.log('RAG désactivé (RAG_ENABLED != true)');
+      console.log('RAG désactivé (RAG_ENABLED=false)');
       return;
     }
 
@@ -136,6 +147,7 @@ class RetrievalService {
       );
       console.warn('Détail RAG:', error.message);
       this.enabled = false;
+      this.collection = null;
     }
   }
 
@@ -146,6 +158,7 @@ class RetrievalService {
   }
 
   async retrieveRelevantChunks(query, topK = this.defaultTopK) {
+    await this.initialize();
     if (!this.enabled || !this.collection) return [];
 
     try {
@@ -156,11 +169,13 @@ class RetrievalService {
       const metadatas = results.metadatas?.[0] || [];
       const distances = results.distances?.[0] || [];
 
-      const flat = documents.map((doc, idx) => ({
-        content: doc,
-        metadata: metadatas[idx] || {},
-        distance: typeof distances[idx] === 'number' ? distances[idx] : Number.MAX_SAFE_INTEGER,
-      }));
+      const flat = documents
+        .map((doc, idx) => ({
+          content: doc,
+          metadata: metadatas[idx] || {},
+          distance: typeof distances[idx] === 'number' ? distances[idx] : Number.MAX_SAFE_INTEGER,
+        }))
+        .filter((item) => item.content != null && String(item.content).trim().length > 0);
 
       if (flat.length === 0) return [];
 

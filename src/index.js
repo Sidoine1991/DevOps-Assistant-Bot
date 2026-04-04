@@ -47,6 +47,9 @@ app.get('/', (req, res) => {
 
 // Initialiser les services
 const aiService = new AIService();
+void aiService.retrievalService.initialize().catch((err) => {
+  console.error('Erreur initialisation retrieval service:', err);
+});
 const supabaseService = new SupabaseService();
 const supabaseConfigService = new SupabaseConfigService();
 const knowledgeService = new KnowledgeService();
@@ -66,8 +69,17 @@ app.get('/api/bot/status', async (req, res) => {
   const stats = await supabaseService.getDashboardStats();
   const hasAIConfig = !!(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY);
   const rs = aiService.retrievalService;
+  await rs.initialize();
   const ragOperational = !!(rs && rs.collection);
   const ragEnvOn = process.env.RAG_ENABLED !== 'false';
+  let ragIndexedChunks = null;
+  if (ragOperational) {
+    try {
+      ragIndexedChunks = await rs.collection.count();
+    } catch (_) {
+      ragIndexedChunks = null;
+    }
+  }
 
   const components = [
     { id: 'database', label: 'Supabase', status: dbConnected ? 'active' : 'inactive' },
@@ -101,6 +113,7 @@ app.get('/api/bot/status', async (req, res) => {
       operational: ragOperational,
       collection: process.env.RAG_COLLECTION || 'devops_courses',
       chromaUrlConfigured: !!(process.env.CHROMA_URL && String(process.env.CHROMA_URL).trim()),
+      indexedChunks: ragIndexedChunks,
     },
   });
 });
@@ -563,8 +576,19 @@ io.on('connection', (socket) => {
   });
 });
 
-function startServer() {
+async function startServer() {
   const PORT = process.env.PORT || 3000;
+  await aiService.retrievalService.initialize();
+  if (aiService.retrievalService.collection) {
+    try {
+      const n = await aiService.retrievalService.collection.count();
+      console.log(
+        `📚 RAG Chroma prêt — collection «${process.env.RAG_COLLECTION || 'devops_courses'}» : ${n} chunk(s) indexé(s)`
+      );
+    } catch (countErr) {
+      console.warn('RAG: impossible de lire le nombre de documents Chroma:', countErr.message);
+    }
+  }
   server.listen(PORT, async () => {
     console.log(`Serveur DevOps Assistant Bot démarré sur le port ${PORT}`);
     
@@ -588,7 +612,10 @@ function startServer() {
 }
 
 if (require.main === module) {
-  startServer();
+  startServer().catch((err) => {
+    console.error('Échec démarrage serveur:', err);
+    process.exit(1);
+  });
 }
 
 module.exports = app;

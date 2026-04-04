@@ -36,6 +36,17 @@ services:
       - devops-network
     restart: unless-stopped
 
+  # ChromaDB pour RAG local (voir https://docs.trychroma.com/guides/deploy/docker)
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/data
+    networks:
+      - devops-network
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -61,6 +72,7 @@ services:
 
 volumes:
   postgres_data:
+  chroma_data:
   prometheus_data:
   grafana_data:
 
