@@ -486,6 +486,9 @@ class AIService {
     if (q.includes('devops')) {
       return `${question} culture devops collaboration automation feedback ci cd`;
     }
+    if (/\baws\b|amazon web services/.test(q)) {
+      return `${question} AWS Amazon Web Services cloud public services gérés EC2 S3 Lambda IAM région console`;
+    }
     return question;
   }
 
@@ -507,12 +510,15 @@ class AIService {
     }
     if (q.includes('ci') || q.includes('cd') || q.includes('pipeline')) return 'cicd';
     if (q.includes('monitoring') || q.includes('metrique')) return 'monitoring';
+    if (/\baws\b|amazon web services/.test(q)) return 'aws_cloud';
     if (q.includes('devops')) return 'devops';
     return 'generic';
   }
 
   buildIntentFallback(intent) {
     switch (intent) {
+      case 'aws_cloud':
+        return 'AWS (Amazon Web Services) est la plateforme cloud d’Amazon : calcul, stockage, bases de données, réseau, sécurité et nombreux services managés, généralement facturés à l’usage et déployés par régions.';
       case 'containerization':
         return 'La conteneurisation consiste à empaqueter une application avec ses dépendances dans une image exécutable. Étapes clés: créer un Dockerfile, builder l’image, lancer le container puis publier l’image dans un registry.';
       case 'cicd':
@@ -524,6 +530,22 @@ class AIService {
       default:
         return this.getFallbackResponse('');
     }
+  }
+
+  /** Avertissements juridiques / pages de garde souvent présents dans les PDF AWS — inutiles pour répondre. */
+  isLegalOrBoilerplateSentence(sentence) {
+    const t = String(sentence || '');
+    return /sans garantie|telles quels|\(c\)\s*ne crée aucun|ne crée aucun engagement|ne fait partie d'aucun|aucun contrat entre aws|traductions?\s+(automatiques|fournies)|susceptibles d'être modifiées|présent document ne fait partie|responsabilités et obligations d'aws|produits ou services aws sont fournis|livre blanc aws les traductions|^\d+\s+présentation d'\s*devops on aws/i.test(
+      t
+    );
+  }
+
+  /** Questions du type définition (« c’est quoi … ») : réponses plus courtes et listes d’extraits limitées. */
+  isDefinitionStyleQuestion(message = '') {
+    const relaxed = this.stripAccents(String(message || '').toLowerCase()).replace(/['\u2019-]/g, ' ');
+    return /c\s+est\s+quoi\b|quest[\s-]ce\s+que\b|qu\s+est[\s-]ce\s+que\b|definir\b|defini(s)?\b|explique(r)?\s+(moi\s+)?c\s+est\s+quoi\b|what\s+is\b/i.test(
+      relaxed
+    );
   }
 
   cleanChunkText(text) {
@@ -561,6 +583,24 @@ class AIService {
       queryTokens = [...new Set([...queryTokens, ...boost])];
     }
 
+    const awsishQuery = /\baws\b|amazon web services/.test(qNorm);
+    if (awsishQuery) {
+      const boost = [
+        'aws',
+        'amazon',
+        'cloud',
+        'service',
+        'lambda',
+        'ecs',
+        'ec2',
+        'region',
+        'infrastructure',
+        'console',
+        'developpement',
+      ];
+      queryTokens = [...new Set([...queryTokens, ...boost])];
+    }
+
     const scored = [];
 
     for (const chunk of ragChunks || []) {
@@ -570,15 +610,20 @@ class AIService {
         .split(/(?<=[.!?])\s+/)
         .map((s) => s.trim())
         .filter((s) => s.length >= 50 && s.length <= 240)
-        .filter((s) => this.isSentenceUsable(s));
+        .filter((s) => this.isSentenceUsable(s))
+        .filter((s) => !this.isLegalOrBoilerplateSentence(s));
 
       for (const sentence of sentences) {
+        if (this.isLegalOrBoilerplateSentence(sentence)) continue;
         const tokens = new Set(this.tokenize(sentence));
         let score = 0;
         for (const token of queryTokens) {
           if (tokens.has(token)) score += 1;
         }
         if (dockerishQuery && /docker|dockerfile|conteneur|container|\bimage\b|compose|registry|ecr|kubernetes|pod|build|scanning container/i.test(sentence)) {
+          score += 3;
+        }
+        if (awsishQuery && /\bAWS\b|Amazon Web Services|AWS\s+\w+|Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|orchestration|console AWS|instance Amazon/i.test(sentence)) {
           score += 3;
         }
         if (score > 0) {
@@ -667,8 +712,24 @@ class AIService {
     return dock.length >= 2 ? dock : relevant;
   }
 
+  /** Met en avant les extraits qui citent des services / outils AWS plutôt que du texte générique. */
+  prioritizeAwsSnippets(relevant, message = '') {
+    if (!relevant || relevant.length === 0) return relevant;
+    const q = this.stripAccents((message || '').toLowerCase());
+    if (!/\baws\b|amazon web services/.test(q)) return relevant;
+    const tech = relevant.filter(
+      (r) =>
+        /Cloud9|CloudShell|Lambda|ECS|EC2|S3|IAM|Amazon ECR|\bAWS\b|orchestration|console|instance Amazon|IDE est basé sur le cloud/i.test(
+          r.sentence
+        ) && !this.isLegalOrBoilerplateSentence(r.sentence)
+    );
+    return tech.length >= 2 ? tech : relevant;
+  }
+
   buildIntentAnswer(intent, message) {
     switch (intent) {
+      case 'aws_cloud':
+        return '**AWS** (Amazon Web Services) est le **cloud public d’Amazon** : un catalogue très large de **services managés** (calcul comme EC2 ou Lambda, stockage comme S3, bases de données, réseau avec VPC, identité avec IAM, conteneurs avec ECS/EKS, etc.). Vous consommez la capacité **à la demande**, dans des **régions** du monde, sans gérer les datacenters physiques. La facturation est en général **à l’usage** ; la sécurité et la conformité sont **partagées** entre AWS et le client (modèle de responsabilité partagée).';
       case 'containerization':
         return 'La conteneurisation permet d’exécuter une application de façon reproductible avec ses dépendances. Commencez par un Dockerfile minimal, testez en local, puis déployez via une pipeline CI/CD.';
       case 'cicd':
@@ -678,7 +739,7 @@ class AIService {
       case 'devops':
         return 'La culture DevOps repose sur la collaboration entre Dev et Ops, l’automatisation des livraisons et l’amélioration continue basée sur le feedback terrain.';
       default:
-        return `Voici une réponse basée sur vos documents pour "${message}".`;
+        return `**Réponse courte** : les passages numérotés ci-dessous sont extraits de vos cours et triés par pertinence approximative avec « ${String(message).slice(0, 120)}${String(message).length > 120 ? '…' : ''} ». Lisez-les comme **illustrations** ou précisions, pas comme une seule phrase continue.`;
     }
   }
 
@@ -696,20 +757,25 @@ class AIService {
       return this.appendSources(greet, externalSources);
     }
 
-    let relevant = this.extractRelevantSentences(message, ragChunks, 10);
+    const definitionStyle = this.isDefinitionStyleQuestion(message);
+    const snippetLimit = definitionStyle ? 6 : 10;
+    let relevant = this.extractRelevantSentences(message, ragChunks, snippetLimit);
     const intent = this.detectIntent(message);
     const proceduralDocker = this.isDockerSetupQuestion(message) && intent === 'containerization';
     if (proceduralDocker) {
       relevant = this.prioritizeDockerSnippets(relevant, message);
+    }
+    if (intent === 'aws_cloud') {
+      relevant = this.prioritizeAwsSnippets(relevant, message);
     }
     if (relevant.length === 0) {
       const fallback = this.buildIntentFallback(intent);
       return this.appendSources(`Je n'ai pas trouvé de passage suffisamment clair dans les documents pour cette question. ${fallback}`, externalSources);
     }
 
-    const bulletPoints = relevant
-      .map((item, idx) => `- Point ${idx + 1}: ${item.sentence.replace(/\s+/g, ' ').trim()}`)
-      .join('\n');
+    const bulletPoints = definitionStyle
+      ? relevant.map((item, idx) => `${idx + 1}. ${item.sentence.replace(/\s+/g, ' ').trim()}`).join('\n')
+      : relevant.map((item, idx) => `- Extrait ${idx + 1}: ${item.sentence.replace(/\s+/g, ' ').trim()}`).join('\n');
     const sources = [...new Set(relevant.map((item) => item.source))].join(', ');
 
     const intentLabel = proceduralDocker
@@ -720,16 +786,22 @@ class AIService {
           ? 'CI/CD'
           : intent === 'monitoring'
             ? 'Monitoring'
-            : intent === 'devops'
-              ? 'Culture DevOps'
-              : 'Synthèse';
+            : intent === 'aws_cloud'
+              ? 'AWS (Amazon Web Services)'
+              : intent === 'devops'
+                ? 'Culture DevOps'
+                : 'Synthèse';
 
     const coreAnswer = proceduralDocker
       ? this.buildDockerSetupCoreAnswer()
       : this.buildIntentAnswer(intent, message);
-    const explanationBlock = proceduralDocker
+    let explanationBlock = proceduralDocker
       ? '**Extraits des cours (complément)** — privilégiez les points qui citent Docker, images ou registres ; ignorez le reste si hors sujet.'
-      : 'Cette réponse est construite à partir des extraits documentaires retrouvés. Elle combine une définition opérationnelle, des points pratiques et des actions concrètes pour passer de la théorie à l’exécution.';
+      : definitionStyle
+        ? '**À propos des extraits** : ce ne sont pas des phrases écrites d’une seule traite par le bot, mais des **citations courtes** issues de vos PDF, mises côte à côte. Elles doivent **compléter** le paragraphe ci-dessus (définition / réponse directe).'
+        : intent === 'aws_cloud'
+          ? '**Illustrations tirées de vos cours** : outils et services AWS effectivement cités dans vos documents.'
+          : '**Extraits documentaires** : passages triés par similarité avec votre question ; servez-vous-en comme matière à relier à votre contexte.';
     const recommendedActions = [
       'Clarifier le périmètre (environnement, objectif métier, contraintes de sécurité).',
       'Appliquer la pratique sur un petit cas pilote puis mesurer l’impact.',
@@ -738,7 +810,10 @@ class AIService {
       'Définir des métriques de suivi (fiabilité, délai de livraison, incidents).',
       'Mettre en place une revue régulière et une amélioration continue.'
     ].join('\n- ');
-    const ragAnswer = `${intentLabel}:\n${coreAnswer}\n\nExplication:\n${explanationBlock}\n\nÉléments issus des documents:\n${bulletPoints}\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.\n\nSources utilisees:\n- ${sources}`;
+    const planAndPractices = definitionStyle
+      ? '\n\n**Pour aller plus loin** : documentation officielle (ex. docs.aws.amazon.com pour AWS), essai sur un compte gratuit ou lab, puis gardez une feuille de route simple (compte, région, IAM minimal, premier service).'
+      : `\n\nPlan d’action recommandé:\n- ${recommendedActions}\n\nBonnes pratiques:\n- Commencer simple, valider rapidement, puis itérer.\n- Standardiser les conventions (naming, branching, revues, alertes).\n- Sécuriser dès le départ (secrets, accès, scans, sauvegardes).\n- Mesurer en continu pour corriger tôt.`;
+    const ragAnswer = `${intentLabel}\n\n${coreAnswer}\n\n${explanationBlock}\n\n**Passages issus des documents :**\n${bulletPoints}${planAndPractices}\n\nSources utilisees:\n- ${sources}`;
     return this.appendSources(ragAnswer, externalSources);
   }
 
