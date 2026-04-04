@@ -18,6 +18,36 @@ const CHROMA_HOST = process.env.CHROMA_HOST || '127.0.0.1';
 const CHROMA_PORT = Number(process.env.CHROMA_PORT || 8000);
 const CHROMA_SSL = process.env.CHROMA_SSL === 'true';
 const CHROMA_URL = process.env.CHROMA_URL || '';
+const RAG_INGEST_REPLACE = process.env.RAG_INGEST_REPLACE === 'true';
+const RAG_INGEST_BATCH_PAUSE_MS = Number(process.env.RAG_INGEST_BATCH_PAUSE_MS || 0);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function addChromaBatchWithRetries(collection, batch, maxRetries = 8) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await collection.add(batch);
+      return;
+    } catch (error) {
+      const msg = error && error.message ? error.message : String(error);
+      const transient =
+        /Failed to connect|ChromaConnectionError|ECONNREFUSED|ETIMEDOUT|timeout|502|503|504|fetch failed/i.test(
+          msg
+        );
+      if (transient && attempt < maxRetries) {
+        const delay = Math.min(30000, 2000 * (attempt + 1));
+        console.warn(
+          `⚠️ Chroma indisponible (tentative ${attempt + 1}/${maxRetries}), nouvel essai dans ${delay}ms…`
+        );
+        await sleep(delay);
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
 function chunkText(text, chunkSize = RAG_CHUNK_SIZE, overlap = RAG_CHUNK_OVERLAP) {
   const chunks = [];
@@ -83,6 +113,15 @@ async function main() {
   const embeddingFunction = getEmbeddingFunction();
   const client = new ChromaClient(chromaArgs);
 
+  if (RAG_INGEST_REPLACE) {
+    try {
+      await client.deleteCollection({ name: CHROMA_COLLECTION });
+      console.log(`🗑️ Collection « ${CHROMA_COLLECTION} » supprimée (RAG_INGEST_REPLACE=true)`);
+    } catch (e) {
+      console.log('ℹ️ Pas de collection à supprimer ou erreur ignorée:', (e && e.message) || e);
+    }
+  }
+
   // Assurer la collection
   let collection;
   try {
@@ -123,14 +162,17 @@ async function main() {
     for (let start = 0; start < ids.length;) {
       const end = Math.min(start + batchSize, ids.length);
       try {
-        await collection.add({
+        await addChromaBatchWithRetries(collection, {
           ids: ids.slice(start, end),
           documents: documents.slice(start, end),
           metadatas: metadatas.slice(start, end),
         });
         start = end;
+        if (RAG_INGEST_BATCH_PAUSE_MS > 0) {
+          await sleep(RAG_INGEST_BATCH_PAUSE_MS);
+        }
       } catch (error) {
-        const msg = (error && error.message) ? error.message : String(error);
+        const msg = error && error.message ? error.message : String(error);
         const isMemoryIssue = /bad allocation|allocate memory|out of memory/i.test(msg);
         if (isMemoryIssue && batchSize > 1) {
           batchSize = Math.max(1, Math.floor(batchSize / 2));
