@@ -33,13 +33,13 @@ async function addChromaBatchWithRetries(collection, batch, maxRetries = 8) {
     } catch (error) {
       const msg = error && error.message ? error.message : String(error);
       const transient =
-        /Failed to connect|ChromaConnectionError|ECONNREFUSED|ETIMEDOUT|timeout|502|503|504|fetch failed/i.test(
+        /Failed to connect|ChromaConnectionError|ECONNREFUSED|ETIMEDOUT|timeout|429|502|503|504|fetch failed/i.test(
           msg
         );
       if (transient && attempt < maxRetries) {
         const delay = Math.min(30000, 2000 * (attempt + 1));
         console.warn(
-          `⚠️ Chroma indisponible (tentative ${attempt + 1}/${maxRetries}), nouvel essai dans ${delay}ms…`
+          `⚠️ Chroma indisponible (tentative ${attempt + 1}/${maxRetries}), nouvel essai dans ${delay} ms...`
         );
         await sleep(delay);
         continue;
@@ -116,7 +116,7 @@ async function main() {
   if (RAG_INGEST_REPLACE) {
     try {
       await client.deleteCollection({ name: CHROMA_COLLECTION });
-      console.log(`🗑️ Collection « ${CHROMA_COLLECTION} » supprimée (RAG_INGEST_REPLACE=true)`);
+      console.log(`🗑️ Collection "${CHROMA_COLLECTION}" supprimée (remplacement complet).`);
     } catch (e) {
       console.log('ℹ️ Pas de collection à supprimer ou erreur ignorée:', (e && e.message) || e);
     }
