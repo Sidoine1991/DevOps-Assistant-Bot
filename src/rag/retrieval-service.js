@@ -81,7 +81,8 @@ class RetrievalService {
           } catch (collectionError) {
             // Si la collection n'existe pas encore, on la crée pour activer le mode RAG.
             const msg = String(collectionError && collectionError.message ? collectionError.message : collectionError);
-            if (/not found|does not exist|404/i.test(msg)) {
+            // chromadb renvoie souvent « The requested resource could not be found » (sans sous-chaîne exacte « not found »).
+            if (/not found|could not be found|does not exist|404|no such collection|unknown collection/i.test(msg)) {
               this.collection = await this.client.createCollection({
                 name: this.collectionName,
                 embeddingFunction: this.embeddingFunction,

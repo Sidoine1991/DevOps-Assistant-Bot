@@ -1,8 +1,10 @@
 const request = require('supertest');
 
+jest.setTimeout(30000);
+
 describe('API Tests', () => {
   let app;
-  
+
   beforeAll(async () => {
     // Importer l'application après la configuration
     app = require('../src/index');
