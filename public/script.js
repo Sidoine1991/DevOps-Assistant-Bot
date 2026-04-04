@@ -11,6 +11,42 @@ let currentConversationId = null;
 let conversations = [];
 let isUserVerified = localStorage.getItem('devops-user-verified') === 'true';
 let pendingAttachments = [];
+/** True entre l’envoi d’un message et la réponse (ou erreur / timeout). */
+let replyInFlight = false;
+let responseDeadlineId = null;
+const RESPONSE_DEADLINE_MS = 180000; // 3 min (LLM + RAG sur hébergement lent)
+
+function clearResponseDeadline() {
+    if (responseDeadlineId !== null) {
+        clearTimeout(responseDeadlineId);
+        responseDeadlineId = null;
+    }
+}
+
+function scheduleResponseDeadline() {
+    clearResponseDeadline();
+    responseDeadlineId = setTimeout(() => {
+        responseDeadlineId = null;
+        if (replyInFlight) {
+            reconnectRetryPayload = null;
+            showNotification(
+                'Le serveur ne répond pas dans les délais prévus. Réessayez ou vérifiez la connexion.',
+                'error'
+            );
+            finishAssistantReply();
+        }
+    }, RESPONSE_DEADLINE_MS);
+}
+
+/** Si non null, ce message sera réémis au prochain `connect`. */
+let reconnectRetryPayload = null;
+/** Copie des pièces jointes du dernier envoi (pour reprise après coupure). */
+let lastSendAttachmentsSnapshot = [];
+
+function copyAttachments(list) {
+    return Array.isArray(list) ? list.map((a) => ({ ...a })) : [];
+}
+
 let attachmentInput = document.getElementById('attachmentInput');
 let attachmentPreview = document.getElementById('attachmentPreview');
 let attachButton = document.getElementById('attachButton');
@@ -45,6 +81,7 @@ class ConversationManager {
 
     // Créer une nouvelle conversation
     createNewConversation() {
+        reconnectRetryPayload = null;
         const conversationId = this.generateConversationId();
         const conversation = {
             id: conversationId,
@@ -101,6 +138,7 @@ class ConversationManager {
     loadConversation(conversationId) {
         const conversation = this.conversations.find(c => c.id === conversationId);
         if (conversation) {
+            reconnectRetryPayload = null;
             this.currentConversationId = conversationId;
             this.clearChatMessages();
             
@@ -141,6 +179,7 @@ class ConversationManager {
         if (this.currentConversationId) {
             const conversation = this.conversations.find(c => c.id === this.currentConversationId);
             if (conversation) {
+                reconnectRetryPayload = null;
                 conversation.messages = [];
                 conversation.updatedAt = new Date().toISOString();
                 this.saveConversations();
@@ -396,11 +435,23 @@ if (clearConversationBtn) {
 socket.on('connect', () => {
     console.log('Connecté au serveur');
     updateStatus('online');
+    flushReconnectRetry();
 });
 
 socket.on('disconnect', () => {
     console.log('Déconnecté du serveur');
     updateStatus('offline');
+    if (replyInFlight) {
+        reconnectRetryPayload = {
+            message: lastSentMessage,
+            attachments: copyAttachments(lastSendAttachmentsSnapshot),
+        };
+        showNotification(
+            'Connexion interrompue. Renvoi automatique dès le retour en ligne.',
+            'info'
+        );
+        finishAssistantReply();
+    }
 });
 
 function removeTypingIndicator() {
@@ -429,11 +480,58 @@ function showTypingIndicator() {
 }
 
 function finishAssistantReply() {
+    replyInFlight = false;
+    clearResponseDeadline();
     removeTypingIndicator();
     setInputState(false);
 }
 
+function submitChatToServer(message, attachments) {
+    setInputState(true);
+    showTypingIndicator();
+    replyInFlight = true;
+    scheduleResponseDeadline();
+    loadUserConfig()
+        .then((userConfig) => {
+            if (!socket.connected) {
+                reconnectRetryPayload = {
+                    message,
+                    attachments: copyAttachments(attachments),
+                };
+                showNotification(
+                    'Connexion perdue. Renvoi automatique à la reconnexion.',
+                    'info'
+                );
+                finishAssistantReply();
+                return;
+            }
+            socket.emit('message', {
+                message,
+                userId,
+                userConfigLocal:
+                    userConfig && userConfig.source === 'local'
+                        ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
+                        : null,
+                attachments,
+            });
+        })
+        .catch(() => {
+            reconnectRetryPayload = null;
+            finishAssistantReply();
+            showNotification('Impossible de charger la configuration.', 'error');
+        });
+}
+
+function flushReconnectRetry() {
+    if (!reconnectRetryPayload || !socket.connected || !isUserVerified) return;
+    const { message, attachments } = reconnectRetryPayload;
+    reconnectRetryPayload = null;
+    showNotification('Connexion rétablie : renvoi du message…', 'info');
+    submitChatToServer(message, attachments);
+}
+
 socket.on('response', (data) => {
+    reconnectRetryPayload = null;
     finishAssistantReply();
     addMessage(data.message, 'bot', data.timestamp, data.sources || []);
     conversationRows.unshift({
@@ -469,32 +567,26 @@ async function sendMessage() {
     }
     const message = messageInput.value.trim();
     if (message) {
+        if (!socket.connected) {
+            showNotification(
+                'Pas connecté au serveur. Attendez la reconnexion (statut en ligne) puis réessayez.',
+                'error'
+            );
+            return;
+        }
+        reconnectRetryPayload = null;
         lastSentMessage = message;
+        const attachmentsForSend = copyAttachments(pendingAttachments);
+        lastSendAttachmentsSnapshot = attachmentsForSend;
         addMessage(message, 'user', new Date().toISOString());
-        setInputState(true);
-        showTypingIndicator();
-
-        loadUserConfig()
-            .then((userConfig) => {
-                socket.emit('message', {
-                    message: message,
-                    userId: userId,
-                    userConfigLocal: userConfig && userConfig.source === 'local'
-                        ? { apiKey: userConfig.apiKey, provider: userConfig.provider }
-                        : null,
-                    attachments: pendingAttachments
-                });
-            })
-            .catch(() => {
-                finishAssistantReply();
-                showNotification('Impossible de charger la configuration.', 'error');
-            });
 
         messageInput.value = '';
         pendingAttachments = [];
         attachmentPreview.textContent = '';
         attachmentInput.value = '';
         messageInput.focus();
+
+        submitChatToServer(message, attachmentsForSend);
     }
 }
 
@@ -984,6 +1076,15 @@ if (document.readyState === 'loading') {
 // Gestion des erreurs
 socket.on('connect_error', (error) => {
     console.error('Erreur de connexion:', error);
+    if (replyInFlight) {
+        reconnectRetryPayload = {
+            message: lastSentMessage,
+            attachments: copyAttachments(lastSendAttachmentsSnapshot),
+        };
+        finishAssistantReply();
+        showNotification('Connexion instable. Renvoi automatique dès que possible.', 'info');
+        return;
+    }
     finishAssistantReply();
     addMessage('❌ Impossible de se connecter au serveur. Vérifiez votre connexion.', 'bot', new Date().toISOString());
 });

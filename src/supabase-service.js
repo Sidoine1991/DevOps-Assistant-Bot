@@ -242,14 +242,25 @@ class SupabaseService {
         this.client.from('error_logs').select('count', { count: 'exact' }).gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       ]);
 
-      if (conversationsResult?.error) {
-        console.warn('getDashboardStats conversations:', conversationsResult.error.message || conversationsResult.error);
-      }
-      if (metricsResult?.error) {
-        console.warn('getDashboardStats system_metrics:', metricsResult.error.message || metricsResult.error);
-      }
-      if (errorsResult?.error) {
-        console.warn('getDashboardStats error_logs:', errorsResult.error.message || errorsResult.error);
+      const tableErrors = [
+        { name: 'conversations', err: conversationsResult?.error },
+        { name: 'system_metrics', err: metricsResult?.error },
+        { name: 'error_logs', err: errorsResult?.error },
+      ].filter((x) => x.err);
+
+      if (tableErrors.length > 0) {
+        const msgs = tableErrors.map((x) => String(x.err.message || x.err));
+        const allFetchFailed = msgs.every((m) => /fetch failed/i.test(m));
+        if (allFetchFailed && tableErrors.length === 3) {
+          console.warn(
+            'getDashboardStats: Supabase injoignable (fetch échoué). Vérifiez la connexion internet, SUPABASE_URL, ' +
+              'SUPABASE_ANON_KEY et les pare-feu / proxy. Les compteurs du dashboard sont renvoyés à 0.'
+          );
+        } else {
+          for (const { name, err } of tableErrors) {
+            console.warn(`getDashboardStats ${name}:`, err.message || err);
+          }
+        }
       }
 
       const metricsRows = metricsResult?.data;

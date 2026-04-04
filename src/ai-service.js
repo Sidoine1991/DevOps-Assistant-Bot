@@ -181,6 +181,24 @@ class AIService {
             }
           }
 
+          // Chroma injoignable : réponses courtes DevOps quand même (éviter de bloquer sur le seul message « configurez CHROMA »).
+          if (!ragUp) {
+            const fb = this.getFallbackResponse(normalizedQuestion);
+            const genericFb = "Je ne connais pas encore une réponse fiable";
+            if (fb && !fb.startsWith(genericFb)) {
+              const noteChroma =
+                '\n\n_**Note :** la base documentaire (Chroma) n’est pas disponible sur ce serveur. Pour citer vos PDF ou un modèle cloud, définissez `CHROMA_URL` ou choisissez **Gemini/OpenAI** dans Configuration._';
+              return this.appendSources(fb + noteChroma, []);
+            }
+            const intent = this.detectIntent(normalizedQuestion);
+            if (intent !== 'generic') {
+              const quick = this.buildIntentAnswer(intent, normalizedQuestion);
+              const noteChroma =
+                '\n\n_**Note :** Chroma n’est pas joignable ici — même conseil : `CHROMA_URL` ou **Gemini/OpenAI** dans Configuration._';
+              return this.appendSources(quick + noteChroma, []);
+            }
+          }
+
           let body = ragUp ? hintEmpty : hintNoChroma;
           if (metricsExtra) {
             body +=
@@ -617,6 +635,7 @@ Réponds toujours en français et de manière helpful.`;
 
   getFallbackResponse(message) {
     const lowerMessage = this.stripAccents((message || '').toLowerCase());
+    const relaxed = lowerMessage.replace(/['\u2019-]/g, ' ').replace(/\s+/g, ' ').trim();
 
     if (
       lowerMessage.includes('defini ci') ||
@@ -631,7 +650,10 @@ Réponds toujours en français et de manière helpful.`;
       lowerMessage.includes('definis devops') ||
       lowerMessage.includes('definir devops') ||
       lowerMessage.includes('c est quoi devops') ||
-      lowerMessage.includes("c'est quoi devops")
+      lowerMessage.includes("c'est quoi devops") ||
+      relaxed.includes('quest ce que devops') ||
+      relaxed.includes('qu est ce que devops') ||
+      lowerMessage.includes('explique devops')
     ) {
       return 'DevOps est une approche qui rapproche Développement (Dev) et Exploitation (Ops) pour livrer plus vite et de manière fiable grâce à l’automatisation (CI/CD), au monitoring, et à des boucles d’amélioration continue.';
     }
