@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>DevOps Assistant Bot</title>
     <link rel="icon" type="image/png" href="/media/app-logo.png">
     <link rel="apple-touch-icon" href="/media/app-logo.png">
@@ -13,20 +13,32 @@
 <body>
     <div id="app">
         <header class="header">
-            <div class="container">
+            <div class="container header-inner">
                 <h1>
                     <img src="/media/app-logo.png" alt="Logo DevOps Assistant Bot" class="app-logo" width="40" height="40">
                     <i class="material-icons">smart_toy</i>
-                    DevOps Assistant Bot
+                    <span class="header-title-text">DevOps Assistant Bot</span>
                 </h1>
-                <div style="display:flex;align-items:center;gap:.6rem;">
-                    <div class="status-indicator">
+                <div class="header-actions">
+                    <div class="status-indicator header-status">
                         <span class="status-dot online"></span>
-                        <span>En ligne</span>
+                        <span class="header-status-text">En ligne</span>
                     </div>
-                    <button type="button" id="logoutBtn" class="btn btn-secondary" style="padding:.4rem .7rem;min-height:auto;">
-                        <i class="material-icons" style="font-size:1rem;">logout</i>
-                        Deconnexion
+                    <button type="button" id="newConversationBtn" class="header-icon-btn" title="Nouvelle conversation" aria-label="Nouvelle conversation">
+                        <i class="material-icons">add_circle</i>
+                    </button>
+                    <button type="button" id="clearConversationBtn" class="header-icon-btn" title="Effacer la conversation" aria-label="Effacer la conversation">
+                        <i class="material-icons">clear_all</i>
+                    </button>
+                    <button type="button" id="openHistoryBtn" class="header-icon-btn" title="Historique des échanges" aria-label="Historique des échanges">
+                        <i class="material-icons">history</i>
+                    </button>
+                    <button type="button" id="openSettingsBtn" class="header-icon-btn" title="Configuration et informations" aria-label="Configuration et informations">
+                        <i class="material-icons">settings</i>
+                    </button>
+                    <button type="button" id="logoutBtn" class="header-icon-btn header-icon-btn--logout" title="Déconnexion" aria-label="Déconnexion">
+                        <i class="material-icons">logout</i>
+                        <span class="header-logout-text">Déconnexion</span>
                     </button>
                 </div>
             </div>
@@ -37,44 +49,51 @@
                 <div class="chat-messages" id="chatMessages">
                     <!-- Messages chargés dynamiquement depuis Supabase -->
                 </div>
-                <div class="ai-badge warning" id="aiBadge" aria-live="polite">IA non configurée</div>
 
                 <div class="chat-input-container">
-                    <div class="conversation-tools">
-                        <button type="button" id="exportConversationBtn" class="tool-btn">Exporter conversation</button>
-                        <button type="button" id="exportConversationHtmlBtn" class="tool-btn">Exporter HTML</button>
-                        <button type="button" id="copyConversationBtn" class="tool-btn">Copier conversation</button>
+                    <button type="button" class="chat-extras-toggle" id="toggleChatExtrasBtn" aria-expanded="false" aria-controls="chatExtrasPanel">
+                        <i class="material-icons chat-extras-toggle__icon" id="toggleChatExtrasIcon">expand_more</i>
+                        <span id="toggleChatExtrasLabel">Outils, exports et raccourcis</span>
+                    </button>
+                    <div class="chat-extras-panel" id="chatExtrasPanel" hidden>
+                        <div class="ai-badge warning" id="aiBadge" aria-live="polite">IA non configurée</div>
+                        <div class="conversation-tools">
+                            <button type="button" id="exportConversationBtn" class="tool-btn">Exporter conversation</button>
+                            <button type="button" id="exportConversationHtmlBtn" class="tool-btn">Exporter HTML</button>
+                            <button type="button" id="copyConversationBtn" class="tool-btn">Copier conversation</button>
+                        </div>
+                        <div class="quick-actions">
+                            <button type="button" class="quick-action" onclick="sendQuickMessage('Comment déployer une application Node.js avec Docker ?')">
+                                <i class="material-icons">rocket_launch</i>
+                                Déployer Node.js
+                            </button>
+                            <button type="button" class="quick-action" onclick="sendQuickMessage('Analyse les métriques système actuelles')">
+                                <i class="material-icons">monitoring</i>
+                                Analyser métriques
+                            </button>
+                            <button type="button" class="quick-action" onclick="sendQuickMessage('J\'ai une erreur 502 sur mon serveur')">
+                                <i class="material-icons">error</i>
+                                Diagnostic erreur
+                            </button>
+                            <button type="button" class="quick-action" onclick="sendQuickMessage('Comment optimiser les performances d\'une API ?')">
+                                <i class="material-icons">speed</i>
+                                Optimiser API
+                            </button>
+                        </div>
                     </div>
-                    <div class="quick-actions">
-                        <button class="quick-action" onclick="sendQuickMessage('Comment déployer une application Node.js avec Docker ?')">
-                            <i class="material-icons">rocket_launch</i>
-                            Déployer Node.js
-                        </button>
-                        <button class="quick-action" onclick="sendQuickMessage('Analyse les métriques système actuelles')">
-                            <i class="material-icons">monitoring</i>
-                            Analyser métriques
-                        </button>
-                        <button class="quick-action" onclick="sendQuickMessage('J\'ai une erreur 502 sur mon serveur')">
-                            <i class="material-icons">error</i>
-                            Diagnostic erreur
-                        </button>
-                        <button class="quick-action" onclick="sendQuickMessage('Comment optimiser les performances d\'une API ?')">
-                            <i class="material-icons">speed</i>
-                            Optimiser API
-                        </button>
-                    </div>
+
                     <div class="input-group">
                         <input type="file" id="attachmentInput" multiple accept="image/*,.pdf,.txt,.md,.json,.log" style="display:none;">
                         <button id="attachButton" type="button" title="Ajouter une pièce jointe" aria-label="Ajouter une pièce jointe">
                             <i class="material-icons">attach_file</i>
                         </button>
-                        <input 
-                            type="text" 
-                            id="messageInput" 
+                        <input
+                            type="text"
+                            id="messageInput"
                             placeholder="Tapez votre message..."
                             aria-label="Message à envoyer au chatbot"
                         >
-                        <button id="sendButton" onclick="sendMessage()" aria-label="Envoyer le message">
+                        <button id="sendButton" type="button" onclick="sendMessage()" aria-label="Envoyer le message">
                             <i class="material-icons">send</i>
                         </button>
                     </div>
@@ -83,106 +102,106 @@
                     <div style="margin-top:0.4rem;font-size:0.8rem;color:#666;" id="connectedUsersInfo">Utilisateurs connectés: ...</div>
                 </div>
             </div>
-
-            <aside class="sidebar">
-                <div class="chat-header">
-                    <div class="chat-title">
-                        <h2>
-                            <i class="material-icons">chat</i>
-                            DevOps Assistant
-                        </h2>
-                        <div class="chat-actions">
-                            <button id="newConversationBtn" class="btn-icon" title="Nouvelle conversation">
-                                <i class="material-icons">add_circle</i>
-                            </button>
-                            <button id="clearConversationBtn" class="btn-icon" title="Effacer la conversation">
-                                <i class="material-icons">clear_all</i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="status-indicator">
-                        <span class="status-dot online"></span>
-                        <span>En ligne</span>
-                    </div>
-                </div>
-                <div class="info-card">
-                    <h3>
-                        <i class="material-icons">info</i>
-                        Informations
-                    </h3>
-                    <div class="info-content">
-                        <div class="info-item">
-                            <span class="label">Version:</span>
-                            <span class="value" id="botVersion">-</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Composants serveur:</span>
-                            <span class="value" id="servicesCount" title="Supabase, Chroma/RAG, clés IA cloud — survolez pour le détail">-</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">IA:</span>
-                            <span class="value" id="aiStatus">…</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Uptime serveur:</span>
-                            <span class="value" id="uptime" title="Depuis le dernier démarrage du processus Node">0h 0m</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Titulaire:</span>
-                            <span class="value" id="accountOwner">-</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                        <a href="/configuration.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block; padding: 0.5rem 1rem; border-radius: 5px; font-size: 0.9rem;">
-                            <i class="material-icons" style="font-size: 0.9rem; vertical-align: middle;">settings</i>
-                            Configurer IA
-                        </a>
-                        <a href="/home.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block; padding: 0.5rem 1rem; border-radius: 5px; font-size: 0.9rem;">
-                            <i class="material-icons" style="font-size: 0.9rem; vertical-align: middle;">home</i>
-                            Accueil (login / inscription)
-                        </a>
-                    </div>
-                </div>
-
-                <div class="metrics-card">
-                    <h3>
-                        <i class="material-icons">analytics</i>
-                        Métriques
-                    </h3>
-                    <div class="metrics-content">
-                        <div class="metric">
-                            <div class="metric-label">CPU</div>
-                            <div class="metric-bar">
-                                <div class="metric-fill" style="width: 45%"></div>
-                            </div>
-                            <div class="metric-value">45%</div>
-                        </div>
-                        <div class="metric">
-                            <div class="metric-label">Mémoire</div>
-                            <div class="metric-bar">
-                                <div class="metric-fill" style="width: 62%"></div>
-                            </div>
-                            <div class="metric-value">62%</div>
-                        </div>
-                        <div class="metric">
-                            <div class="metric-label">Disque</div>
-                            <div class="metric-bar">
-                                <div class="metric-fill" style="width: 78%"></div>
-                            </div>
-                            <div class="metric-value">78%</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="history-card">
-                    <h3>
-                        <i class="material-icons">history</i>
-                        Historique
-                    </h3>
-                    <div id="conversationHistoryList" class="history-list"></div>
-                </div>
-            </aside>
         </main>
+    </div>
+
+    <div id="settingsBackdrop" class="overlay-backdrop" hidden aria-hidden="true"></div>
+    <div id="settingsSheet" class="slide-sheet slide-sheet--settings" role="dialog" aria-modal="true" aria-labelledby="settingsSheetTitle" hidden>
+        <div class="slide-sheet__header">
+            <h2 id="settingsSheetTitle" class="slide-sheet__title">
+                <i class="material-icons">settings</i>
+                Configuration &amp; informations
+            </h2>
+            <button type="button" id="closeSettingsBtn" class="btn-icon" aria-label="Fermer le panneau">
+                <i class="material-icons">close</i>
+            </button>
+        </div>
+        <div class="slide-sheet__body">
+            <div class="info-card info-card--sheet">
+                <h3>
+                    <i class="material-icons">info</i>
+                    Informations
+                </h3>
+                <div class="info-content">
+                    <div class="info-item">
+                        <span class="label">Version:</span>
+                        <span class="value" id="botVersion">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Composants serveur:</span>
+                        <span class="value" id="servicesCount" title="Supabase, Chroma/RAG, clés IA cloud — survolez pour le détail">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">IA:</span>
+                        <span class="value" id="aiStatus">…</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Uptime serveur:</span>
+                        <span class="value" id="uptime" title="Depuis le dernier démarrage du processus Node">0h 0m</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Titulaire:</span>
+                        <span class="value" id="accountOwner">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metrics-card" id="metricsSection">
+                <h3>
+                    <i class="material-icons">analytics</i>
+                    Métriques
+                </h3>
+                <div class="metrics-content">
+                    <div class="metric">
+                        <div class="metric-label">CPU</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill" style="width: 45%"></div>
+                        </div>
+                        <div class="metric-value">45%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Mémoire</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill" style="width: 62%"></div>
+                        </div>
+                        <div class="metric-value">62%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Disque</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill" style="width: 78%"></div>
+                        </div>
+                        <div class="metric-value">78%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sheet-action-links">
+                <a href="/configuration.html" class="btn btn-secondary sheet-link-btn">
+                    <i class="material-icons">tune</i>
+                    Configurer IA
+                </a>
+                <a href="/home.html" class="btn btn-secondary sheet-link-btn">
+                    <i class="material-icons">home</i>
+                    Accueil (login / inscription)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyBackdrop" class="overlay-backdrop" hidden aria-hidden="true"></div>
+    <div id="historyPanel" class="history-float" role="dialog" aria-modal="true" aria-labelledby="historyPanelTitle" hidden>
+        <div class="history-float__header">
+            <h2 id="historyPanelTitle" class="history-float__title">
+                <i class="material-icons">history</i>
+                Historique
+            </h2>
+            <button type="button" id="closeHistoryBtn" class="btn-icon" aria-label="Fermer l’historique">
+                <i class="material-icons">close</i>
+            </button>
+        </div>
+        <p class="history-float__hint">Appuyez sur une ligne pour remplir le champ message ou copier une réponse.</p>
+        <div id="conversationHistoryList" class="history-list history-list--floating"></div>
     </div>
 
     <script src="/backend-config.js"></script>

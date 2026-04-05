@@ -1,0 +1,8 @@
+{
+  "appId": "com.devopsassistant.bot",
+  "appName": "DevOps Assistant Bot",
+  "webDir": "public",
+  "android": {
+    "allowMixedContent": true
+  }
+}

@@ -215,6 +215,7 @@ class ConversationManager {
 
     // Mettre à jour l'affichage de l'historique
     updateConversationHistory() {
+        if (!conversationHistoryList) return;
         conversationHistoryList.innerHTML = '';
 
         this.conversations.forEach(conversation => {
@@ -1034,9 +1035,15 @@ function updateUptime() {
     uptimeElement.textContent = `${hours}h ${minutes}m`;
 }
 
-// Animation des métriques
+function getMetricsRoot() {
+    return document.getElementById('metricsSection');
+}
+
+// Animation des métriques (bloc #metricsSection dans le panneau Configuration)
 function animateMetrics() {
-    const metrics = document.querySelectorAll('.metric-fill');
+    const root = getMetricsRoot();
+    if (!root) return;
+    const metrics = root.querySelectorAll('.metric-fill');
     metrics.forEach((metric, index) => {
         const targetWidth = metric.style.width;
         metric.style.width = '0%';
@@ -1048,26 +1055,198 @@ function animateMetrics() {
 
 // Simulation de métriques en temps réel
 function updateMetrics() {
-    const cpuMetric = document.querySelector('.metric:nth-child(1) .metric-fill');
-    const memoryMetric = document.querySelector('.metric:nth-child(2) .metric-fill');
-    const diskMetric = document.querySelector('.metric:nth-child(3) .metric-fill');
-    
-    const cpuValue = document.querySelector('.metric:nth-child(1) .metric-value');
-    const memoryValue = document.querySelector('.metric:nth-child(2) .metric-value');
-    const diskValue = document.querySelector('.metric:nth-child(3) .metric-value');
-    
-    // Simulation de variations aléatoires
-    const cpu = Math.floor(Math.random() * 30) + 30; // 30-60%
-    const memory = Math.floor(Math.random() * 20) + 50; // 50-70%
-    const disk = Math.floor(Math.random() * 10) + 70; // 70-80%
-    
+    const root = getMetricsRoot();
+    if (!root) return;
+    const cpuMetric = root.querySelector('.metric:nth-child(1) .metric-fill');
+    const memoryMetric = root.querySelector('.metric:nth-child(2) .metric-fill');
+    const diskMetric = root.querySelector('.metric:nth-child(3) .metric-fill');
+    const cpuValue = root.querySelector('.metric:nth-child(1) .metric-value');
+    const memoryValue = root.querySelector('.metric:nth-child(2) .metric-value');
+    const diskValue = root.querySelector('.metric:nth-child(3) .metric-value');
+    if (!cpuMetric || !memoryMetric || !diskMetric || !cpuValue || !memoryValue || !diskValue) return;
+
+    const cpu = Math.floor(Math.random() * 30) + 30;
+    const memory = Math.floor(Math.random() * 20) + 50;
+    const disk = Math.floor(Math.random() * 10) + 70;
+
     cpuMetric.style.width = cpu + '%';
     memoryMetric.style.width = memory + '%';
     diskMetric.style.width = disk + '%';
-    
+
     cpuValue.textContent = cpu + '%';
     memoryValue.textContent = memory + '%';
     diskValue.textContent = disk + '%';
+}
+
+const CHAT_EXTRAS_SESSION_KEY = 'devops-chat-extras-open';
+
+function isWideChatLayout() {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1025px)').matches;
+}
+
+function syncChatExtrasLayout() {
+    const panel = document.getElementById('chatExtrasPanel');
+    const btn = document.getElementById('toggleChatExtrasBtn');
+    const icon = document.getElementById('toggleChatExtrasIcon');
+    const label = document.getElementById('toggleChatExtrasLabel');
+    if (!panel || !btn) return;
+
+    if (isWideChatLayout()) {
+        panel.removeAttribute('hidden');
+        btn.hidden = true;
+        btn.setAttribute('aria-expanded', 'true');
+        return;
+    }
+
+    btn.hidden = false;
+    const expanded = sessionStorage.getItem(CHAT_EXTRAS_SESSION_KEY) === '1';
+    if (expanded) {
+        panel.removeAttribute('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        if (icon) icon.textContent = 'expand_less';
+        if (label) label.textContent = 'Masquer outils, exports et raccourcis';
+    } else {
+        panel.setAttribute('hidden', '');
+        btn.setAttribute('aria-expanded', 'false');
+        if (icon) icon.textContent = 'expand_more';
+        if (label) label.textContent = 'Outils, exports et raccourcis';
+    }
+}
+
+function initChatShellUi() {
+    if (window.__devopsChatShellBound) return;
+    window.__devopsChatShellBound = true;
+
+    const settingsBackdrop = document.getElementById('settingsBackdrop');
+    const settingsSheet = document.getElementById('settingsSheet');
+    const openSettingsBtn = document.getElementById('openSettingsBtn');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+
+    const historyBackdrop = document.getElementById('historyBackdrop');
+    const historyPanel = document.getElementById('historyPanel');
+    const openHistoryBtn = document.getElementById('openHistoryBtn');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+
+    const extrasBtn = document.getElementById('toggleChatExtrasBtn');
+
+    function setAriaHidden(el, hidden) {
+        if (!el) return;
+        el.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    }
+
+    function syncOverlayAria() {
+        setAriaHidden(settingsBackdrop, settingsBackdrop.hidden);
+        setAriaHidden(settingsSheet, settingsSheet.hidden);
+        setAriaHidden(historyBackdrop, historyBackdrop.hidden);
+        setAriaHidden(historyPanel, historyPanel.hidden);
+    }
+
+    function openSettings() {
+        if (!settingsSheet || !settingsBackdrop) return;
+        closeHistory();
+        settingsSheet.hidden = false;
+        settingsBackdrop.hidden = false;
+        document.body.classList.add('sheet-open');
+        syncOverlayAria();
+        if (closeSettingsBtn) closeSettingsBtn.focus();
+    }
+
+    function closeSettings() {
+        if (!settingsSheet || !settingsBackdrop) return;
+        settingsSheet.hidden = true;
+        settingsBackdrop.hidden = true;
+        if (!historyPanel || historyPanel.hidden) {
+            document.body.classList.remove('sheet-open');
+        }
+        syncOverlayAria();
+        if (openSettingsBtn) openSettingsBtn.focus();
+    }
+
+    function openHistory() {
+        if (!historyPanel || !historyBackdrop) return;
+        closeSettings();
+        historyPanel.hidden = false;
+        historyBackdrop.hidden = false;
+        document.body.classList.add('sheet-open');
+        syncOverlayAria();
+        if (closeHistoryBtn) closeHistoryBtn.focus();
+    }
+
+    function closeHistory() {
+        if (!historyPanel || !historyBackdrop) return;
+        historyPanel.hidden = true;
+        historyBackdrop.hidden = true;
+        if (!settingsSheet || settingsSheet.hidden) {
+            document.body.classList.remove('sheet-open');
+        }
+        syncOverlayAria();
+        if (openHistoryBtn) openHistoryBtn.focus();
+    }
+
+    if (openSettingsBtn) {
+        openSettingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openSettings();
+        });
+    }
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeSettings();
+        });
+    }
+    if (settingsBackdrop) {
+        settingsBackdrop.addEventListener('click', () => closeSettings());
+    }
+
+    if (openHistoryBtn) {
+        openHistoryBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openHistory();
+        });
+    }
+    if (closeHistoryBtn) {
+        closeHistoryBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeHistory();
+        });
+    }
+    if (historyBackdrop) {
+        historyBackdrop.addEventListener('click', () => closeHistory());
+    }
+
+    if (extrasBtn) {
+        extrasBtn.addEventListener('click', () => {
+            const panel = document.getElementById('chatExtrasPanel');
+            if (!panel) return;
+            const next = panel.hasAttribute('hidden');
+            if (next) {
+                panel.removeAttribute('hidden');
+                sessionStorage.setItem(CHAT_EXTRAS_SESSION_KEY, '1');
+            } else {
+                panel.setAttribute('hidden', '');
+                sessionStorage.setItem(CHAT_EXTRAS_SESSION_KEY, '0');
+            }
+            syncChatExtrasLayout();
+        });
+    }
+
+    syncChatExtrasLayout();
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(syncChatExtrasLayout, 150);
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        closeSettings();
+        closeHistory();
+    });
+
+    syncOverlayAria();
 }
 
 // Initialisation — script chargé après DOMContentLoaded (bootstrap-chat.js), il faut lancer tout de suite si le doc est déjà prêt
@@ -1076,6 +1255,7 @@ async function initChatApp() {
         window.location.href = '/login.html';
         return;
     }
+    initChatShellUi();
     if (socket.connected) {
         updateStatus('online');
     }

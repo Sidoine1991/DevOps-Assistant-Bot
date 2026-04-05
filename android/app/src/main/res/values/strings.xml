@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DevOps Assistant Bot</string>
+    <string name="title_activity_main">DevOps Assistant Bot</string>
+    <string name="package_name">com.devopsassistant.bot</string>
+    <string name="custom_url_scheme">com.devopsassistant.bot</string>
+</resources>

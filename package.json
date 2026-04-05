@@ -13,7 +13,10 @@
     "chroma:up": "docker-compose up -d chromadb",
     "chroma:down": "docker-compose stop chromadb",
     "chroma:logs": "docker-compose logs -f chromadb",
-    "rag:ingest": "node src/rag/ingest-pdfs.js"
+    "rag:ingest": "node src/rag/ingest-pdfs.js",
+    "cap:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:build": "npx cap sync android && cd android && gradlew.bat :app:assembleDebug"
   },
   "keywords": [
     "devops",
@@ -25,6 +28,10 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "@chroma-core/default-embed": "^0.1.9",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.101.0",
