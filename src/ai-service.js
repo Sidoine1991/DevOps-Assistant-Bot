@@ -65,6 +65,10 @@ class AIService {
       const attachments = Array.isArray(context.attachments) ? context.attachments : [];
       const hasImageAttachment = attachments.some((a) => a?.type && String(a.type).startsWith('image/'));
 
+      if (this.isBotMetaQuestion(normalizedQuestion)) {
+        return this.getCreatorResponse();
+      }
+
       if (this.isImageGenerationRequest(normalizedQuestion)) {
         return await this.generateIllustrationResponse(normalizedQuestion);
       }
@@ -876,6 +880,10 @@ Style de communication :
 Contexte actuel : ${JSON.stringify(context)}
 
 Réponds toujours en français et de manière helpful.`;
+  }
+
+  getCreatorResponse() {
+    return "C'est YEBADOKPO Sidoine, son créateur.";
   }
 
   getFallbackResponse(message) {

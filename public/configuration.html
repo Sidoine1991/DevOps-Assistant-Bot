@@ -277,6 +277,16 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* styles.css impose overflow:hidden sur body — indispensable pour le chat, mais bloque le scroll sur cette page (WebView / mobile). */
+        body {
+            overflow-x: hidden;
+            overflow-y: auto;
+            height: auto;
+            min-height: 100vh;
+            min-height: 100dvh;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
 </head>
 <body>

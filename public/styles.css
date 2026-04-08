@@ -184,6 +184,10 @@ body {
     min-height: 0;
     padding: 2rem;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -539,6 +543,8 @@ a:focus-visible {
     background: rgba(15, 23, 42, 0.45);
     backdrop-filter: blur(3px);
     display: block;
+    cursor: pointer;
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -596,8 +602,11 @@ body.sheet-open {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -698,8 +707,11 @@ body.sheet-open {
     min-height: 120px;
     max-height: none;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 0.5rem 0.75rem 1rem;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
 }
 
 .history-list--floating .conversation-item {
@@ -764,6 +776,8 @@ body.sheet-open {
 .history-list {
     max-height: 300px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .conversation-item {

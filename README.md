@@ -170,5 +170,6 @@ npm run rag:ingest
 
 ## Références dépôt
 
+- Créateur: **YEBADOKPO Sidoine**
 - GitHub: [Sidoine1991/DevOps-Assistant-Bot](https://github.com/Sidoine1991/DevOps-Assistant-Bot)
 - GitLab: [sidoine1991-group/devops-assistant-bot](https://gitlab.com/sidoine1991-group/devops-assistant-bot)

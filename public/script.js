@@ -1113,6 +1113,20 @@ function syncChatExtrasLayout() {
     }
 }
 
+/** WebView Android : tap sur overlay ou fermeture ne déclenche pas toujours l’événement click. */
+function bindOverlayTap(el, handler) {
+    if (!el) return;
+    el.addEventListener('click', handler);
+    el.addEventListener(
+        'touchend',
+        (e) => {
+            if (e.cancelable) e.preventDefault();
+            handler();
+        },
+        { passive: false }
+    );
+}
+
 function initChatShellUi() {
     if (window.__devopsChatShellBound) return;
     window.__devopsChatShellBound = true;
@@ -1189,16 +1203,8 @@ function initChatShellUi() {
             openSettings();
         });
     }
-    if (closeSettingsBtn) {
-        closeSettingsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeSettings();
-        });
-    }
-    if (settingsBackdrop) {
-        settingsBackdrop.addEventListener('click', () => closeSettings());
-    }
+    bindOverlayTap(closeSettingsBtn, closeSettings);
+    bindOverlayTap(settingsBackdrop, closeSettings);
 
     if (openHistoryBtn) {
         openHistoryBtn.addEventListener('click', (e) => {
@@ -1206,16 +1212,8 @@ function initChatShellUi() {
             openHistory();
         });
     }
-    if (closeHistoryBtn) {
-        closeHistoryBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeHistory();
-        });
-    }
-    if (historyBackdrop) {
-        historyBackdrop.addEventListener('click', () => closeHistory());
-    }
+    bindOverlayTap(closeHistoryBtn, closeHistory);
+    bindOverlayTap(historyBackdrop, closeHistory);
 
     if (extrasBtn) {
         extrasBtn.addEventListener('click', () => {
